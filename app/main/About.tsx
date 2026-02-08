@@ -6,9 +6,11 @@ const About = () => {
   const router = useRouter();
   
   return (
+    <Background>
       <View style={styles.container}>
         <Text>About Screen</Text>
       </View>
+    </Background>
   )
 }
 

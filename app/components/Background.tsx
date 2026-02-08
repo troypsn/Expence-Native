@@ -30,7 +30,7 @@ const styles = StyleSheet.create({
   },
   base: {
     ...StyleSheet.absoluteFillObject,
-    backgroundColor: '#060394', // nice deep blue
+    backgroundColor: '#0003c0', // nice deep blue
   },
   vignette: {
     ...StyleSheet.absoluteFillObject,

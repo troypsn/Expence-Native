@@ -21,15 +21,15 @@ const StartNav = () => {
       <View style={styles.container}>
         
         <Pressable  onPress={()=> router.push('/auth/Login')}>
-          <Text style= {styles.navText}>Login</Text>
+          <Text style= {styles.navText}>LOGIN</Text>
         </Pressable>
 
         <Pressable  onPress={()=> router.push('/auth/Register')}>
-          <Text style= {styles.navText}>Sign Up</Text>
+          <Text style= {styles.navText}>SIGN UP</Text>
         </Pressable>
 
         <Pressable  onPress={()=> router.push('/main/About')}>
-          <Text style= {styles.navText}>About</Text>
+          <Text style= {styles.navText}>ABOUT</Text>
         </Pressable>
         
       </View>
@@ -38,9 +38,7 @@ const StartNav = () => {
 
 const styles = StyleSheet.create({
   container : {
-    borderWidth: 1,
     padding: 10,
-    borderRadius: 10,
     flex: 1, 
     alignItems: "center",
     justifyContent: "space-around",
@@ -49,7 +47,7 @@ const styles = StyleSheet.create({
   },
    navText : {
     color: 'white',
-    padding: 10,
+    padding: 8,
     fontFamily: 'VCR-Mono',
     fontSize: 24,
   }
