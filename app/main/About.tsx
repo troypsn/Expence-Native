@@ -1,17 +1,14 @@
 import { View, Text, StyleSheet, Pressable} from 'react-native';
 import Background from '../components/Background';
-import StartNav from '../components/StartNav';
 import { useRouter } from 'expo-router';
 
-const Home = () => {
+const About = () => {
   const router = useRouter();
   
   return (
-    <Background>
       <View style={styles.container}>
-        <StartNav/>
+        <Text>About Screen</Text>
       </View>
-    </Background>
   )
 }
 
@@ -27,4 +24,4 @@ const styles = StyleSheet.create({
   }
 })
 
-export default Home
+export default About
