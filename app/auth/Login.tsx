@@ -1,7 +1,8 @@
-import { View, Text, StyleSheet, StatusBar, TextInput, Platform, KeyboardAvoidingView, Pressable} from 'react-native'
+import { View, Text, StyleSheet, StatusBar, TextInput, Platform, KeyboardAvoidingView, Pressable, Alert, ActivityIndicator, Keyboard} from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useState} from 'react';
 import Background from '../components/Background';
+import { supabase } from '@/lib/supabase';
 
 
 export default function Login() {
@@ -11,16 +12,66 @@ export default function Login() {
     password: '',
   }); 
 
+  const [message, setMessage] = useState('');
   
+  const[loading, setLoading] = useState(false);
 
-  const handleFormSubmit = () => {
-    // Handle form submission logic here
+  const showErrorAlert = (title : string, message : string) => {
+    Alert.alert(
+      title,
+      message,
+      [{ text: 'OK', onPress: () => console.log('OK Pressed') }],
+      { cancelable: false } 
+    );
+  }
+
+  const validateForm = () => {
+    if (loginDetails.email.trim() === '' || loginDetails.password.trim() === '') {
+      showErrorAlert('Error', 'Please fill in all fields.');
+      return false;
+    }
+    else {
+      return true;
+    }
+  }
+
+  const handleLogin = async () => {
+    console.log('Login details:', loginDetails);
+        setMessage(''); // clear previous messages
+        const { data, error } = await supabase.auth.signInWithPassword({
+          email: loginDetails.email,
+          password: loginDetails.password,
+        });
+    
+        if (error) {
+          console.log(`Server Error: ${error.message}`);
+          setMessage(`Server Error: ${error.message}`);
+          setLoading(false);
+          return;
+        }
+    
+        if (data.user) {
+          console.log(`Success! User ID: ${data.user.id}`);
+          console.log('Login user:', data.user);
+          setMessage('Login Successful! Redirecting...');
+          setLoading(false);
+        }
+      
+  }
+
+  const handleFormSubmit = async () => {
+    Keyboard.dismiss();
+    const isValid = validateForm();
+    if (isValid) {
+      setLoading(true);
+      await handleLogin();
+    } 
   }
 
   return (
     <Background>
 
-      <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={styles.formContainer}>
+      <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={styles.KeyboardAvoidingViewStyle}>
         <SafeAreaView style={styles.container}>
   
                 <Text style={styles.title}>LOGIN</Text>
@@ -54,14 +105,17 @@ export default function Login() {
             barStyle="light-content"
             >
             </StatusBar>
-
        
-        
+        <ActivityIndicator animating={loading} color="#ffffff" size="large" />
+
+        <Text style={styles.status}>{message}</Text>
+
         </SafeAreaView>
       </KeyboardAvoidingView>
     </Background>
   )
 }
+
 
 const styles = StyleSheet.create({
   container :{
@@ -70,7 +124,15 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     width: '100%',
   },
-  
+
+  KeyboardAvoidingViewStyle :{
+    alignSelf: 'center',
+    justifyContent: 'center',
+    width: '100%',
+    height: '100%',
+    maxWidth: 500,
+  },
+
   formContainer: {
     flex: 1,
     alignItems: 'center',
@@ -123,7 +185,15 @@ const styles = StyleSheet.create({
     color: 'black',
     fontSize: 18,
     
+  },
+  status: {
+    fontFamily: 'VCR-Mono',
+    color: 'white',
+    marginTop: 20,
+    textAlign: 'center',
+    paddingHorizontal: 20,
   }
 });
+
 
 

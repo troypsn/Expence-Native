@@ -122,7 +122,7 @@ export default function Register() {
     if (data.user) {
       console.log(`Success! User ID: ${data.user.id}`);
       console.log('Registered user:', data.user);
-      setMessage('Registration successful! Please check email address to verify account.');
+      setMessage('Registration successful! you can know Login.');
       setLoading(false);
     } 
   };
@@ -138,11 +138,9 @@ export default function Register() {
 
   return (
     <Background>
-      <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={styles.formContainer}>
+      <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={styles.KeyboardAvoidingViewStyle}>
 
         <SafeAreaView style={styles.container}>
-
-                
 
                 <Text style={styles.title}>REGISTER</Text>
 
@@ -207,6 +205,14 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
     width: '100%',
+  },
+
+    KeyboardAvoidingViewStyle :{
+    alignSelf: 'center',
+    justifyContent: 'center',
+    width: '100%',
+    height: '100%',
+    maxWidth: 500,
   },
   
   formContainer: {
