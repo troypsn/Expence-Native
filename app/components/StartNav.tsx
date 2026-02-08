@@ -2,9 +2,21 @@ import { View, Text, StyleSheet, Pressable} from 'react-native';
 import Background from '../components/Background';
 import { useRouter } from 'expo-router';
 import { useFonts } from 'expo-font';
+import { useState, useEffect } from 'react';
 
 
-const StartNav = () => {
+export type GreetingProps = {
+  loggedIn: boolean;
+};
+
+
+function StartNav({loggedIn} : GreetingProps) {
+  const [toggleUserHome, setToggleUserHome] = useState(loggedIn);
+  
+  useEffect(() => {
+    setToggleUserHome(loggedIn);
+  }, [])
+
     const [fontsLoaded] = useFonts({
         'VCR-Mono': require('../../assets/fonts/VCR_OSD_MONO_1.001.ttf'),
     });
@@ -14,11 +26,15 @@ const StartNav = () => {
     }
     const router = useRouter();
 
-  
+    console.log('StartNav rendered with loggedIn:', loggedIn);
   
   
   return (
       <View style={styles.container}>
+
+        <Pressable  onPress={()=> router.push('/main/Home')} style={{display: toggleUserHome ? 'flex' : 'none'}}>
+          <Text style= {styles.navText}>HOME : </Text>
+        </Pressable>
         
         <Pressable  onPress={()=> router.push('/auth/Login')}>
           <Text style= {styles.navText}>LOGIN</Text>

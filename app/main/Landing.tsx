@@ -5,37 +5,34 @@ import { useRouter } from 'expo-router';
 import Screen from '../components/Screen';
 
 
-function Home(){
+const Landing = () => {
   const router = useRouter();
   
   return (
 
     <Background>
-      <View style={styles.container}>
-        <Text style={styles.title}>- EXPENCE -</Text>
-       <Screen></Screen>
-      </View>
-
-
-      <StatusBar 
+              <StatusBar 
               translucent
               backgroundColor="transparent"
               barStyle="light-content"
               >
-      </StatusBar>
+            </StatusBar>
+      <View style={styles.container}>
+        <Text style={styles.title}>--EXPENCE--</Text>
+       {
+       // temporary true, check async storage if a user token is stored. If so, set to true, else false.
+       }
+        <StartNav loggedIn={true} />
+      </View>
     </Background>
   )
 }
 
 const styles = StyleSheet.create({
   container : {
-    width: '100%',
-    borderBlockColor: 'red',
-    borderWidth: 2,
     flex: 1, 
     alignItems: "center",
     justifyContent: "center",
-    
   },
    button : {
     color: 'blue',
@@ -46,10 +43,9 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     fontFamily: 'VCR-Mono',
     color: 'white',
-    fontSize: 15,
+    fontSize: 28,
     marginBottom: 20,
-   },
-  
+   }
 })
 
-export default Home
+export default Landing
