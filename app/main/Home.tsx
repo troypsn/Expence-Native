@@ -1,13 +1,13 @@
 import { View, Text, StyleSheet, StatusBar} from 'react-native';
 import Background from '../components/Background';
-import StartNav from '../components/StartNav';
 import { useRouter } from 'expo-router';
 import Screen from '../components/Screen';
-
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
 function Home(){
   const router = useRouter();
   
+
   return (
 
     <Background>
@@ -15,6 +15,8 @@ function Home(){
         <Text style={styles.title}>- EXPENCE -</Text>
        <Screen></Screen>
       </View>
+
+
 
 
       <StatusBar 

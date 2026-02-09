@@ -2,10 +2,27 @@ import { View, Text, StyleSheet, StatusBar} from 'react-native';
 import Background from '../components/Background';
 import StartNav from '../components/StartNav';
 import { useRouter } from 'expo-router';
-import Screen from '../components/Screen';
+import { useEffect, useState } from 'react';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import { supabase } from '@/lib/supabase';
 
 
 const Landing = () => {
+  
+  const [loggedIn, setLoggedIn] = useState(false);
+
+  const checkSession = async () => {
+    const { data: { session } } = await supabase.auth.getSession();
+    console.log('Session:', session);
+    if (session) {
+      setLoggedIn(true);
+    }
+  };
+
+  useEffect(() => {
+  checkSession();
+}, []);
+  
   const router = useRouter();
   
   return (
@@ -19,10 +36,8 @@ const Landing = () => {
             </StatusBar>
       <View style={styles.container}>
         <Text style={styles.title}>--EXPENCE--</Text>
-       {
-       // temporary true, check async storage if a user token is stored. If so, set to true, else false.
-       }
-        <StartNav loggedIn={true} />
+
+        <StartNav loggedIn={loggedIn} />
       </View>
     </Background>
   )

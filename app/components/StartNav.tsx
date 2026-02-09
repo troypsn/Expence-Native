@@ -3,6 +3,7 @@ import Background from '../components/Background';
 import { useRouter } from 'expo-router';
 import { useFonts } from 'expo-font';
 import { useState, useEffect } from 'react';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
 
 export type GreetingProps = {
@@ -11,12 +12,7 @@ export type GreetingProps = {
 
 
 function StartNav({loggedIn} : GreetingProps) {
-  const [toggleUserHome, setToggleUserHome] = useState(loggedIn);
   
-  useEffect(() => {
-    setToggleUserHome(loggedIn);
-  }, [])
-
     const [fontsLoaded] = useFonts({
         'VCR-Mono': require('../../assets/fonts/VCR_OSD_MONO_1.001.ttf'),
     });
@@ -32,8 +28,8 @@ function StartNav({loggedIn} : GreetingProps) {
   return (
       <View style={styles.container}>
 
-        <Pressable  onPress={()=> router.push('/main/Home')} style={{display: toggleUserHome ? 'flex' : 'none'}}>
-          <Text style= {styles.navText}>HOME : </Text>
+        <Pressable  onPress={()=> router.push('/main/Home')} style={{display: loggedIn ? 'flex' : 'none'}}>
+          <Text style= {styles.navText}>HOME</Text>
         </Pressable>
         
         <Pressable  onPress={()=> router.push('/auth/Login')}>
@@ -46,6 +42,10 @@ function StartNav({loggedIn} : GreetingProps) {
 
         <Pressable  onPress={()=> router.push('/main/About')}>
           <Text style= {styles.navText}>ABOUT</Text>
+        </Pressable>
+
+         <Pressable  onPress={()=> AsyncStorage.clear()}>
+          <Text style= {styles.navText}>CLEAR</Text>
         </Pressable>
         
       </View>
