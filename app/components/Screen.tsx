@@ -5,16 +5,16 @@ import { View, Text, Pressable, StyleSheet } from 'react-native'
 function Screen(props: { amount: number, filter: string }) {
     
     useEffect(() => {
+        
         console.log('Screen component mounted with props:', props);
     }, [props]);
+
   return (
-    
         <View style={styles.container}>
             <Text style={styles.header}>TOTAL COST</Text>
             <Text style={styles.filter}>:TODAY</Text>
-            <Text style={styles.amount}>2050</Text>
+            <Text style={styles.amount}>{props.amount}</Text>
         </View>
- 
   )
 }
 
@@ -25,15 +25,15 @@ const styles = StyleSheet.create({
         justifyContent: 'center',
         backgroundColor: '#afadad28',
 
-        width: 'auto',
+        width: 300,
         minWidth: 250,
-        maxWidth: 400,
+        maxWidth: 300,
         borderBlockColor: 'black',
         borderWidth: 2,
 
         height: '30%',
         minHeight: 150,
-        maxHeight: 300,
+        maxHeight: 200,
         gap: '2%',
     },
     header: {

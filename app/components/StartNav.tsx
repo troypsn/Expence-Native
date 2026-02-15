@@ -32,7 +32,7 @@ function StartNav({loggedIn} : GreetingProps) {
   return (
       <View style={styles.container}>
 
-        <Pressable  onPress={()=> router.push('/main/Home')} style={{display: loggedIn ? 'flex' : 'none'}}>
+        <Pressable  onPress={()=> router.push('/(tabs)/Home')} style={{display: loggedIn ? 'flex' : 'none'}}>
           <Text style= {styles.navText}>HOME</Text>
         </Pressable>
         

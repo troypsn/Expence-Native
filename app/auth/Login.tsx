@@ -4,10 +4,12 @@ import { useState} from 'react';
 import Background from '../components/Background';
 import { supabase } from '@/lib/supabase';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { router } from 'expo-router';
+import { useRouter } from 'expo-router';
 
 
 export default function Login() {
+
+  const router = useRouter();
 
   const [loginDetails, setLoginDetails] = useState({
     email: '',
@@ -58,7 +60,7 @@ export default function Login() {
           setMessage('Login Successful! Redirecting...');
           setLoading(false);
           AsyncStorage.setItem('loggedIn', JSON.stringify(data.user));
-          router.push('/main/Home');
+          router.replace("/(tabs)/Home");
         }
       
   }
