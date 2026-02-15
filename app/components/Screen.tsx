@@ -1,19 +1,20 @@
+import { useEffect } from 'react';
 import { View, Text, Pressable, StyleSheet } from 'react-native'
 
 
-function Screen() {
-    function toggleTimeFilter(){
-        //insert code to toggle time filter here
-        console.log('toggle time filter')
-    }
+function Screen(props: { amount: number, filter: string }) {
+    
+    useEffect(() => {
+        console.log('Screen component mounted with props:', props);
+    }, [props]);
   return (
-    <Pressable onPress={() => toggleTimeFilter}>
+    
         <View style={styles.container}>
             <Text style={styles.header}>TOTAL COST</Text>
             <Text style={styles.filter}>:TODAY</Text>
             <Text style={styles.amount}>2050</Text>
         </View>
-    </Pressable>
+ 
   )
 }
 

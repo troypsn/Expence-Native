@@ -12,6 +12,10 @@ export type GreetingProps = {
 
 
 function StartNav({loggedIn} : GreetingProps) {
+
+  useEffect(() => {
+    console.log('StartNav useEffect - loggedIn:', loggedIn);
+  }, []);
   
     const [fontsLoaded] = useFonts({
         'VCR-Mono': require('../../assets/fonts/VCR_OSD_MONO_1.001.ttf'),

@@ -19,8 +19,20 @@ const Landing = () => {
     }
   };
 
+  const checkAsyncStorage = async () => {
+    try {
+      const value = await AsyncStorage.getItem('loggedIn');
+      if (value) {
+        setLoggedIn(true);
+      }
+    }   catch (error) {
+      console.log('Error checking AsyncStorage:', error);
+    }
+  };
+
   useEffect(() => {
   checkSession();
+  checkAsyncStorage();  
 }, []);
   
   const router = useRouter();

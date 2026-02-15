@@ -3,6 +3,8 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useState} from 'react';
 import Background from '../components/Background';
 import { supabase } from '@/lib/supabase';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import { router } from 'expo-router';
 
 
 export default function Login() {
@@ -55,6 +57,8 @@ export default function Login() {
           console.log('Login user:', data.user);
           setMessage('Login Successful! Redirecting...');
           setLoading(false);
+          AsyncStorage.setItem('loggedIn', JSON.stringify(data.user));
+          router.push('/main/Home');
         }
       
   }
