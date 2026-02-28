@@ -5,6 +5,8 @@ import edit from "../../assets/images/navbarIcons/edit.png";
 import home from "../../assets/images/navbarIcons/home.png";
 import shortcuts from "../../assets/images/navbarIcons/shortcuts.png";
 import transactions from "../../assets/images/navbarIcons/transactions.png";
+import add from"../../assets/images/navbarIcons/Add.png";
+import addInverse from"../../assets/images/navbarIcons/addInverse.png";
 
   const {width} = Dimensions.get('window');
 
@@ -31,6 +33,7 @@ export default function TabsLayout() {
               style={[styles.icon, focused && styles.activeIcon]}
             />
           ),
+          tabBarLabel: ()=> null,
         }}
       />
 
@@ -43,6 +46,20 @@ export default function TabsLayout() {
               style={[styles.icon, focused && styles.activeIcon]}
             />
           ),
+           tabBarLabel: ()=> null,
+        }}
+      />
+
+      <Tabs.Screen
+        name="Add"
+        options={{
+          tabBarIcon: ({ focused }) => (
+            <Image
+              source={focused ? addInverse : add}
+              style={[styles.centerButton]}
+            />
+          ),
+           tabBarLabel: ()=> null,
         }}
       />
 
@@ -55,6 +72,7 @@ export default function TabsLayout() {
               style={[styles.icon, focused && styles.activeIcon]}
             />
           ),
+           tabBarLabel: ()=> null,
         }}
       />
 
@@ -69,6 +87,7 @@ export default function TabsLayout() {
               style={[styles.icon, focused && styles.activeIcon]}
             />
           ),
+           tabBarLabel: ()=> null,
         }}
       />
     </Tabs>
@@ -77,21 +96,25 @@ export default function TabsLayout() {
 
 const styles = StyleSheet.create({
   tabBar: {
+    alignContent: "center",
     position: "absolute",
-    bottom: 26,
-    width: '100%',
+    bottom: 15,
+    width: '90%',
     marginHorizontal: 'auto',
     maxWidth: 400,
     alignSelf: 'center',
     height: 70,
-    backgroundColor: "#1d1d5c",
-    borderRadius: 20,
+    backgroundColor: "#1d1d36",
+    borderRadius: 40,
     elevation: 10,
+    marginLeft: "5%",
+    borderColor: "#1d1d36",
+    borderWidth: 3,
   },
   centerButton: {
-    top: -25,
-    width: 65,
-    height: 65,
+    top: -10,
+    width: 55,
+    height: 55,
     borderRadius: 35,
     justifyContent: "center",
     alignItems: "center",
@@ -105,5 +128,8 @@ const styles = StyleSheet.create({
   },
   activeIcon: {
     tintColor: "#83b9f8",
+  },
+  activeIconAdd: {
+    tintColor: "#0e4481",
   },
 });

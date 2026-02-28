@@ -58,12 +58,9 @@ const styles = StyleSheet.create({
       marginLeft: 'auto',
     },
     detailsContainer: { 
-  
       gap: 4,
       display: 'flex',
       flexDirection: 'column',
-      
-        
     },
     icon : {
       display: 'flex',
@@ -90,7 +87,7 @@ const styles = StyleSheet.create({
     iconImage: {
       width: 25,
       height: 25,
-      marginTop: 5,
+      marginTop: 0,
       marginRight: 18,
       marginLeft: 5,
     }

@@ -1,12 +1,12 @@
 import { View, Text } from 'react-native'
 import React from 'react'
 
-const Transactions = () => {
+const Add = () => {
   return (
     <View>
-      <Text>Transactions</Text>
+      <Text>Add</Text>
     </View>
   )
 }
 
-export default Transactions
+export default Add

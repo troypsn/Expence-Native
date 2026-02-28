@@ -1,13 +1,15 @@
-import { View, Text, StyleSheet, StatusBar, Pressable, ScrollView} from 'react-native';
+import { View, Text, StyleSheet, StatusBar, Pressable, ScrollView, Platform} from 'react-native';
 import Background from '../components/Background';
 import { useRouter } from 'expo-router';
 import Screen from '../components/Screen';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { supabase } from '@/lib/supabase';
 import Transaction from '../components/Transaction';
-import { SafeAreaProvider } from 'react-native-safe-area-context';
+import { SafeAreaProvider, useSafeAreaInsets } from 'react-native-safe-area-context';
 
 function Home(){
+
+  const insets = useSafeAreaInsets();
   const router = useRouter();
 
   console.log(AsyncStorage.getItem('loggedIn'));
@@ -17,6 +19,7 @@ function Home(){
     const result  = await supabase.auth.getSession();
     console.log('Session:', result.data.session?.access_token);
   }
+
   getSession();
 
   function handleScreenPress() {
@@ -26,6 +29,50 @@ function Home(){
     //insert logic to fetch total expense amount for the day and pass it to the Screen component as a prop
   }
 
+  const items = [ 
+    {
+      id: 1,
+      name: "Grocery",
+      amount: 65.23,
+      date: "06/12/2024",
+      image: "food",
+    },
+    {
+      id: 2,
+      name: "Commute",
+      amount: 100,
+      date: "06/12/2024",
+      image: "car",
+    },
+    {
+      id: 3,
+      name: "Grocery",
+      amount: 58.24,
+      date: "06/12/2024",
+      image: "food",
+    },
+    {
+      id: 4,
+      name: "Grocery",
+      amount: 1000,
+      date: "06/12/2024",
+      image: "food",
+    },
+    {
+      id: 5,
+      name: "Frenslee Juice",
+      amount: 1000,
+      date: "06/12/2024",
+      image: "money",
+    },
+    {
+      id: 6,
+      name: "Electricity",
+      amount: 1000,
+      date: "06/12/2024",
+      image: "money",
+    },
+  ]
 
   return (
 
@@ -47,12 +94,17 @@ function Home(){
           <ScrollView 
             showsVerticalScrollIndicator={false} 
             showsHorizontalScrollIndicator={false}
-            style={styles.transactionsList}>
+            style={styles.transactionsList}
+            >
+            
 
-              <Transaction name="Grocery Shopping" amount={45.75} date="06/12/2024" image = "food" />
-              <Transaction name="Commute" amount={100} date="06/12/2024" image = "car" />
-              <Transaction name="Pagkain ni Frenslee" amount={45.75} date="06/12/2024" image = "money" />
-              
+
+            {items.map((item)=>{
+              return (<Transaction key= {item.id} name={item.name} amount={item.amount} date={item.date} image = {item.image}/>);
+            })}
+
+            <View style={Platform.OS === 'ios' ? styles.bottomPaddingIOS : styles.bottomPaddingAndroid} />
+  
 
           </ScrollView>
 
@@ -76,8 +128,6 @@ const styles = StyleSheet.create({
   container : {
     paddingTop: "13%",
     width: '100%',
-    borderBlockColor: 'red',
-    borderWidth: 2,
     flex: 1, 
     alignItems: "center",
     justifyContent: "flex-start",
@@ -98,8 +148,6 @@ const styles = StyleSheet.create({
     marginBottom: 20,
    },
    transactionsContainer:{
-    borderBlockColor: 'blue',
-    borderWidth: 2,
     width: '100%',
     minHeight: 450,
    },
@@ -129,13 +177,17 @@ const styles = StyleSheet.create({
     display: 'flex',
     alignContent: 'center',
     flexDirection: 'column',
-    borderBlockColor: 'green',
-    borderWidth: 2,
     width: '100%',
-    maxHeight: 400,
+    maxHeight: 500,
     maxWidth: '100%',
     minWidth: 250,
-   }
+   },
+   bottomPaddingIOS :{
+    height: 290,
+   },
+  bottomPaddingAndroid:{
+    paddingBottom:  100,
+  }
   
 })
 

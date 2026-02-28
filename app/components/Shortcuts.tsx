@@ -1,12 +1,12 @@
 import { View, Text } from 'react-native'
 import React from 'react'
 
-const Transactions = () => {
+function Shortcuts(){
   return (
     <View>
-      <Text>Transactions</Text>
+      <Text>Shortcuts</Text>
     </View>
   )
 }
 
-export default Transactions
+export default Shortcuts

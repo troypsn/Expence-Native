@@ -28,10 +28,8 @@ const styles = StyleSheet.create({
         width: 300,
         minWidth: 250,
         maxWidth: 300,
-        borderBlockColor: 'black',
-        borderWidth: 2,
 
-        height: '30%',
+        height: '25%',
         minHeight: 150,
         maxHeight: 200,
         gap: '2%',
