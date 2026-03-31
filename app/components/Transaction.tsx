@@ -5,7 +5,22 @@ import food from '@/assets/images/food.png'
 import { useState } from 'react'
 
 
-function Transaction ({name = "Default Transaction", amount = 0, date = "01/01/2024", image = "money"} : {name: string, amount: number, date: string, image: any}) {
+const formatDate = (timestamp: string) => {
+  const date = new Date(timestamp);
+  const dateStr = date.toLocaleDateString('en-US', {
+    month: 'numeric',
+    day: 'numeric',
+    year: 'numeric'
+  });
+  const timeStr = date.toLocaleTimeString('en-US', {
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: true
+  });
+  return `${dateStr}: ${timeStr}`;
+};
+
+function Transaction ({name = "Default Transaction", amount = 0, date = "01/01/2024", image = "money", key = "0"} : {name: string, amount: number, date: string, image: any, key: any}) {
 
 const [transactionImage, setTransactionImage] = useState(image === "money" ? money : image === "car" ? car : food);
 
@@ -18,7 +33,7 @@ const [transactionImage, setTransactionImage] = useState(image === "money" ? mon
 
         <View style={styles.detailsContainer}>
             <Text style={styles.name}>{name}</Text>
-            <Text style={styles.date}>{date}</Text>
+            <Text style={styles.date}>{formatDate(date)}</Text>
         </View>
       </View>   
 

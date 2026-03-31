@@ -59,7 +59,7 @@ export default function Login() {
           console.log('Login user:', data.user);
           setMessage('Login Successful! Redirecting...');
           setLoading(false);
-          AsyncStorage.setItem('loggedIn', JSON.stringify(data.user));
+          AsyncStorage.setItem('userId', JSON.stringify(data.user.id));
           router.replace("/(tabs)/Home");
         }
       

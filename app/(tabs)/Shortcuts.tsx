@@ -1,111 +1,183 @@
-import { View, Text, StyleSheet, StatusBar, Pressable, ScrollView, Platform, FlatList} from 'react-native';
+import { View, Text, StyleSheet, StatusBar, Pressable, ScrollView, Platform, RefreshControl, KeyboardAvoidingView} from 'react-native';
 import Background from '../components/Background';
-import { useRouter } from 'expo-router';
+import { useRouter, useFocusEffect } from 'expo-router';
 import Screen from '../components/Screen';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { supabase } from '@/lib/supabase';
 import Transaction from '../components/Transaction';
 import { SafeAreaProvider, useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useEffect, useState, useCallback } from 'react';
+import { get } from 'react-native/Libraries/TurboModule/TurboModuleRegistry';
+
 
 function Shortcuts(){
 
   const insets = useSafeAreaInsets();
   const router = useRouter();
-
-  console.log(AsyncStorage.getItem('loggedIn'));
-  console.log('Home rendered');
   
-  const getSession = async () => {
-    const result  = await supabase.auth.getSession();
-    console.log('Session:', result.data.session?.access_token);
-  }
 
-  getSession();
+  const [userId, setUserId] = useState<string | null>(null);
+  const [selectedFilter, setSelectedFilter] = useState("TODAY");
+  const [items, setItems] = useState<any[]>([]);
+  const [refreshing, setRefreshing] = useState(false);
+  const [sortAscending, setSortAscending] = useState(false);
 
-  function handleScreenPress() {
-    console.log('Screen pressed');
-    //insert logic to filter through expenses,
-    //depending on filter, fetch by day, week, month, year and pass the total amount to the Screen component as a prop
-    //insert logic to fetch total expense amount for the day and pass it to the Screen component as a prop
-  }
 
-  const items = [ 
-    {
-      id: 1,
-      name: "Grocery",
-      amount: 65.23,
-      date: "06/12/2024",
-      image: "food",
-    },
-    {
-      id: 2,
-      name: "Commute",
-      amount: 100,
-      date: "06/12/2024",
-      image: "car",
-    },
-    {
-      id: 3,
-      name: "Grocery",
-      amount: 58.24,
-      date: "06/12/2024",
-      image: "food",
-    },
-    {
-      id: 4,
-      name: "Grocery",
-      amount: 1000,
-      date: "06/12/2024",
-      image: "food",
-    },
-    {
-      id: 5,
-      name: "Frenslee Juice",
-      amount: 1000,
-      date: "06/12/2024",
-      image: "money",
-    },
-    {
-      id: 6,
-      name: "Electricity",
-      amount: 1000,
-      date: "06/12/2024",
-      image: "money",
-    },
-  ]
+  
+  const getDateRange = (filterType: string) => {
+    const now = new Date();
+    const today = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate(), 0, 0, 0, 0));
+    let startDate = new Date(today);
+    let endDate = new Date(today);
+    endDate.setUTCHours(23, 59, 59, 999);
+
+    const filterTrimmed = filterType.trim();
+
+    if (filterTrimmed === "THIS WEEK") {
+      const dayOfWeek = today.getUTCDay();
+      const diff = today.getUTCDate() - dayOfWeek;
+      startDate = new Date(Date.UTC(today.getUTCFullYear(), today.getUTCMonth(), diff, 0, 0, 0, 0));
+      endDate = new Date(startDate);
+      endDate.setUTCDate(endDate.getUTCDate() + 6);
+      endDate.setUTCHours(23, 59, 59, 999);
+    } else if (filterTrimmed === "THIS MONTH") {
+      startDate = new Date(Date.UTC(today.getUTCFullYear(), today.getUTCMonth(), 1, 0, 0, 0, 0));
+      endDate = new Date(Date.UTC(today.getUTCFullYear(), today.getUTCMonth() + 1, 0, 23, 59, 59, 999));
+    } else if (filterTrimmed === "THIS YEAR") {
+      startDate = new Date(Date.UTC(today.getUTCFullYear(), 0, 1, 0, 0, 0, 0));
+      endDate = new Date(Date.UTC(today.getUTCFullYear(), 11, 31, 23, 59, 59, 999));
+    }
+
+    return { startDate, endDate };
+  };
+
+
+  const getItems = async (filterType: string = "TODAY", isAscending: boolean = false) => {
+    if (!userId) return [];
+    
+    let query = supabase.from('shortcuts').select('*').eq('user_id', userId);
+
+    const filterTrimmed = filterType.trim();
+    
+    if (filterTrimmed !== "ALL TIME") {
+      const { startDate, endDate } = getDateRange(filterType);
+      const startDateStr = startDate.toISOString();
+      const endDateStr = endDate.toISOString();
+      
+      console.log('Date range - Start:', startDateStr, 'End:', endDateStr);
+      query = query.gte('created_at', startDateStr).lte('created_at', endDateStr);
+    }
+
+    const {data, error} = await query.order('created_at', {ascending: isAscending});
+    console.log('Fetched transactions:', data, 'Filter type:', filterType, 'User ID:', userId);
+    if (error) {
+      console.log('Error fetching transactions:', error);
+      return [];
+    }
+    return data;
+  };
+
+  // Handle refresh on swipe
+  const handleRefresh = async () => {
+    setRefreshing(true);
+    const transactions = await getItems(selectedFilter, sortAscending);
+    setItems(transactions);
+    setRefreshing(false);
+  };
+
+  // ============ EFFECTS ============
+
+  // Get userId from AsyncStorage on mount
+  useEffect(() => {
+    const getUserId = async () => {
+      let id = await AsyncStorage.getItem('userId');
+ 
+      if (id && id.startsWith('"')) {
+        id = JSON.parse(id);
+      }
+      setUserId(id);
+      console.log('User ID from storage:', id);
+    };
+    getUserId();
+  }, []);
+
+  // Fetch items when filter, userId, or sort order changes
+  useEffect(() => {
+    const fetchItems = async () => {
+      const shortcuts = await getItems(selectedFilter, sortAscending);
+      setItems(shortcuts);
+    };
+    fetchItems();
+  }, [userId, selectedFilter, sortAscending]);
+
+  // Get session
+  useEffect(() => {
+    const getSession = async () => {
+      const result  = await supabase.auth.getSession();
+      console.log('Session:', result.data.session?.access_token);
+    };
+    getSession();
+  }, []);
+
+  // Refresh data when screen comes into focus (e.g., after adding expense)
+  useFocusEffect(
+    useCallback(() => {
+      if (userId) {
+        const refreshData = async () => {
+          const transactions = await getItems(selectedFilter, sortAscending);
+          setItems(transactions);
+        };
+        refreshData();
+      }
+    }, [userId, selectedFilter, sortAscending])
+  );
+
+  // ============ RENDER ============
+
 
   return (
 
     <Background>
       <SafeAreaProvider style={{ flex: 1 }}>
-        <View style={styles.container}>
+        <KeyboardAvoidingView 
+          style={{ flex: 1 }} 
+          enabled={true}
+        >
+          <View style={styles.container}>
           <Text style={styles.title}>- EXPENCE -</Text>
 
-          <Pressable onPress={handleScreenPress}>
-              <Screen amount={2050} filter="TODAY"/>
-          </Pressable>
+          <Screen userId={userId} sortAscending={sortAscending} onFilterChange={setSelectedFilter} />
 
-          <View style={styles.shortcutsContainer}>
-              <View style={styles.shortcutsHeader}>
-                <Pressable><Text style={styles.shortcutsHeaderTitle}>Shortcuts</Text></Pressable>
-                <Pressable><Text style={styles.shortcutsHeaderViewAll}>View All</Text></Pressable>
-              </View>
-
-          <View style={styles.shortcutsList}>
-            {
-            //Fix Alot of  this stuff, renames transactions to shortcuts, resize shortcuts to boxes //
-            }
-            <FlatList
-              data={items}
-              keyExtractor={(item) => item.id.toString()}
-              numColumns={3}
-              contentContainerStyle={styles.shortcutsList}
-              columnWrapperStyle={styles.row}
-              renderItem={({ item }) => (
-                <Transaction name={item.name}amount={item.amount}date={item.date}image={item.image} />
-              )}
-            />
+          <View style={styles.transactionsContainer}>
+              <View style={styles.transactionsHeader}>
+                <Pressable onPress={() => setSortAscending(!sortAscending)}><Text style={styles.transactionsHeaderTitle}>Transactions {sortAscending ? '🔼' : '🔽'}</Text></Pressable>
+                <Pressable onPress={() => router.push('/(tabs)/Transactions')}><Text style={styles.transactionsHeaderViewAll}>View All</Text></Pressable>
           </View>
+
+          <ScrollView 
+            showsVerticalScrollIndicator={false} 
+            showsHorizontalScrollIndicator={false}
+            style={styles.transactionsList}
+            scrollEnabled={!refreshing}
+            refreshControl={
+              <RefreshControl 
+                refreshing={refreshing} 
+                onRefresh={handleRefresh}
+                tintColor="white"
+              />
+            }
+            >
+            
+
+
+            {items.map((item)=>{
+              return (<Transaction key= {item.id} name={item.title} amount={item.amount} date={item.created_at} image = {item.image}/>);
+            })}
+
+            <View style={Platform.OS === 'ios' ? styles.bottomPaddingIOS : styles.bottomPaddingAndroid} />
+  
+
+          </ScrollView>
 
           </View>
 
@@ -118,6 +190,7 @@ function Shortcuts(){
                 barStyle="light-content"
                 >
         </StatusBar>
+        </KeyboardAvoidingView>
       </SafeAreaProvider>
     </Background>
   )
@@ -146,49 +219,46 @@ const styles = StyleSheet.create({
     fontSize: 15,
     marginBottom: 20,
    },
-   shortcutsContainer:{
+   transactionsContainer:{
     width: '100%',
     minHeight: 450,
    },
 
-  shortcutsHeader: {
+   transactionsHeader: {
     alignSelf: 'center',
     display: 'flex',
     flexDirection: 'row',
     justifyContent: 'space-between',
-    padding: 10,
+    padding: 5,
     color: '#FFFFFF',
     width: '100%',
     minWidth: 250,
     maxWidth: 300,
    },
-  shortcutsHeaderTitle: {
+   transactionsHeaderTitle: {
     fontFamily: 'VCR-Mono',
     fontSize: 13,
     color: 'white',
    },
-   shortcutsHeaderViewAll: {
+   transactionsHeaderViewAll: {
     fontFamily: 'VCR-Mono',
     fontSize: 13,
     color: 'white',
    },
-    shortcutsList: {
-    
-
+   transactionsList: {
+    display: 'flex',
+    alignContent: 'center',
+    flexDirection: 'column',
     width: '100%',
     maxHeight: 500,
     maxWidth: '100%',
     minWidth: 250,
    },
-   row:{
-    justifyContent: 'space-between',
-    marginBottom: 15,
-   },
    bottomPaddingIOS :{
     height: 290,
    },
   bottomPaddingAndroid:{
-    paddingBottom: 100,
+    paddingBottom:  100,
   }
   
 })
