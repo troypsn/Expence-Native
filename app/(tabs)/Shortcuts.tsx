@@ -1,266 +1,391 @@
-import { View, Text, StyleSheet, StatusBar, Pressable, ScrollView, Platform, RefreshControl, KeyboardAvoidingView} from 'react-native';
+import {
+  View, Text, StyleSheet, StatusBar, Pressable,
+  ScrollView, Platform, RefreshControl, KeyboardAvoidingView, Modal, Alert, LayoutAnimation, UIManager
+} from 'react-native';
 import Background from '../components/Background';
 import { useRouter, useFocusEffect } from 'expo-router';
-import Screen from '../components/Screen';
-import AsyncStorage from '@react-native-async-storage/async-storage';
-import { supabase } from '@/lib/supabase';
 import Transaction from '../components/Transaction';
-import { SafeAreaProvider, useSafeAreaInsets } from 'react-native-safe-area-context';
+import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { useEffect, useState, useCallback } from 'react';
-import { get } from 'react-native/Libraries/TurboModule/TurboModuleRegistry';
+import { useAuth } from '@/lib/authContext';
+import { getShortcuts, deleteShortcut, insertTransaction } from '@/lib/db';
+import { supabase } from '@/lib/supabase';
+import { useNetwork } from '@/lib/networkContext';
+import ConfirmationModal from '../components/ConfirmationModal';
 
-
-function Shortcuts(){
-
-  const insets = useSafeAreaInsets();
+function Shortcuts() {
   const router = useRouter();
-  
+  const { userId, isLoggedIn, isGuest } = useAuth();
+  const { isOnline } = useNetwork();
 
-  const [userId, setUserId] = useState<string | null>(null);
-  const [selectedFilter, setSelectedFilter] = useState("TODAY");
   const [items, setItems] = useState<any[]>([]);
   const [refreshing, setRefreshing] = useState(false);
   const [sortAscending, setSortAscending] = useState(false);
+  const [showLoginModal, setShowLoginModal] = useState(false);
+  const [itemToDelete, setItemToDelete] = useState<number | null>(null);
+  const [loading, setLoading] = useState(false);
 
+  const handleUseShortcut = async (item: any) => {
+    if (loading) return;
+    setLoading(true);
 
-  
-  const getDateRange = (filterType: string) => {
-    const now = new Date();
-    const today = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate(), 0, 0, 0, 0));
-    let startDate = new Date(today);
-    let endDate = new Date(today);
-    endDate.setUTCHours(23, 59, 59, 999);
+    const now = new Date().toISOString();
+    try {
+      const localId = await insertTransaction({
+        remote_id: null,
+        user_id: userId,
+        title: item.title,
+        amount: item.amount,
+        image: item.image,
+        description: item.description || 'Shortcut usage',
+        created_at: now,
+        synced: 0,
+        is_guest: isGuest ? 1 : 0,
+      });
 
-    const filterTrimmed = filterType.trim();
+      // Background sync
+      if (isLoggedIn && isOnline && userId) {
+        (async () => {
+          try {
+            const { data, error } = await supabase
+              .from('transactions')
+              .insert({
+                user_id: userId,
+                title: item.title,
+                amount: item.amount,
+                image: item.image,
+                description: item.description || 'Shortcut usage',
+                created_at: now
+              })
+              .select('transaction_id')
+              .single();
 
-    if (filterTrimmed === "THIS WEEK") {
-      const dayOfWeek = today.getUTCDay();
-      const diff = today.getUTCDate() - dayOfWeek;
-      startDate = new Date(Date.UTC(today.getUTCFullYear(), today.getUTCMonth(), diff, 0, 0, 0, 0));
-      endDate = new Date(startDate);
-      endDate.setUTCDate(endDate.getUTCDate() + 6);
-      endDate.setUTCHours(23, 59, 59, 999);
-    } else if (filterTrimmed === "THIS MONTH") {
-      startDate = new Date(Date.UTC(today.getUTCFullYear(), today.getUTCMonth(), 1, 0, 0, 0, 0));
-      endDate = new Date(Date.UTC(today.getUTCFullYear(), today.getUTCMonth() + 1, 0, 23, 59, 59, 999));
-    } else if (filterTrimmed === "THIS YEAR") {
-      startDate = new Date(Date.UTC(today.getUTCFullYear(), 0, 1, 0, 0, 0, 0));
-      endDate = new Date(Date.UTC(today.getUTCFullYear(), 11, 31, 23, 59, 59, 999));
+            if (!error && data?.transaction_id) {
+              const { markTransactionSynced } = await import('@/lib/db');
+              await markTransactionSynced(localId, data.transaction_id);
+            }
+          } catch (e) {
+            console.warn('[shortcuts] Sync failed:', e);
+          }
+        })();
+      }
+
+      Alert.alert('Success', `Added ${item.title} to transactions!`);
+      router.replace('/(tabs)/Home');
+    } catch (e) {
+      Alert.alert('Error', 'Failed to add transaction.');
+    } finally {
+      setLoading(false);
     }
-
-    return { startDate, endDate };
   };
 
-
-  const getItems = async (filterType: string = "TODAY", isAscending: boolean = false) => {
-    if (!userId) return [];
-    
-    let query = supabase.from('shortcuts').select('*').eq('user_id', userId);
-
-    const filterTrimmed = filterType.trim();
-    
-    if (filterTrimmed !== "ALL TIME") {
-      const { startDate, endDate } = getDateRange(filterType);
-      const startDateStr = startDate.toISOString();
-      const endDateStr = endDate.toISOString();
-      
-      console.log('Date range - Start:', startDateStr, 'End:', endDateStr);
-      query = query.gte('created_at', startDateStr).lte('created_at', endDateStr);
+  // Show login prompt immediately when guest arrives on this tab
+  useEffect(() => {
+    if (isGuest) {
+      setShowLoginModal(true);
     }
+  }, [isGuest]);
 
-    const {data, error} = await query.order('created_at', {ascending: isAscending});
-    console.log('Fetched transactions:', data, 'Filter type:', filterType, 'User ID:', userId);
-    if (error) {
-      console.log('Error fetching transactions:', error);
-      return [];
-    }
-    return data;
-  };
+  const loadShortcuts = useCallback(
+    async (ascending: boolean = false) => {
+      if (!isLoggedIn || !userId) return [];
+      return getShortcuts(userId, ascending);
+    },
+    [userId, isLoggedIn]
+  );
 
-  // Handle refresh on swipe
   const handleRefresh = async () => {
     setRefreshing(true);
-    const transactions = await getItems(selectedFilter, sortAscending);
-    setItems(transactions);
+    const rows = await loadShortcuts(sortAscending);
+    setItems(rows);
     setRefreshing(false);
   };
 
-  // ============ EFFECTS ============
+  const confirmDelete = async () => {
+    if (itemToDelete === null) return;
 
-  // Get userId from AsyncStorage on mount
-  useEffect(() => {
-    const getUserId = async () => {
-      let id = await AsyncStorage.getItem('userId');
- 
-      if (id && id.startsWith('"')) {
-        id = JSON.parse(id);
+    const shortcutToDelete = items.find(i => i.local_id === itemToDelete);
+
+    if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
+      UIManager.setLayoutAnimationEnabledExperimental(true);
+    }
+
+    // ─── Remote Deletion ───
+    if (isLoggedIn && isOnline && shortcutToDelete?.remote_id) {
+      try {
+        const { error } = await supabase
+          .from('shortcuts')
+          .delete()
+          .eq('shortcut_id', shortcutToDelete.remote_id);
+
+        if (error) console.warn('[shortcuts] Remote delete failed:', error.message);
+      } catch (e) {
+        console.warn('[shortcuts] Remote delete error:', e);
       }
-      setUserId(id);
-      console.log('User ID from storage:', id);
-    };
-    getUserId();
-  }, []);
+    }
 
-  // Fetch items when filter, userId, or sort order changes
+    await deleteShortcut(itemToDelete);
+    const rows = await loadShortcuts(sortAscending);
+    LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+    setItems(rows);
+    setItemToDelete(null);
+  };
+
+  const handleEdit = (item: any) => {
+    Alert.alert("Edit", `Edit feature for ${item.title} coming soon!`);
+  };
+
   useEffect(() => {
-    const fetchItems = async () => {
-      const shortcuts = await getItems(selectedFilter, sortAscending);
-      setItems(shortcuts);
-    };
-    fetchItems();
-  }, [userId, selectedFilter, sortAscending]);
+    loadShortcuts(sortAscending).then(setItems);
+  }, [userId, sortAscending]);
 
-  // Get session
-  useEffect(() => {
-    const getSession = async () => {
-      const result  = await supabase.auth.getSession();
-      console.log('Session:', result.data.session?.access_token);
-    };
-    getSession();
-  }, []);
-
-  // Refresh data when screen comes into focus (e.g., after adding expense)
   useFocusEffect(
     useCallback(() => {
-      if (userId) {
-        const refreshData = async () => {
-          const transactions = await getItems(selectedFilter, sortAscending);
-          setItems(transactions);
-        };
-        refreshData();
-      }
-    }, [userId, selectedFilter, sortAscending])
+      loadShortcuts(sortAscending).then(setItems);
+    }, [userId, isLoggedIn, sortAscending])
   );
 
-  // ============ RENDER ============
-
-
   return (
-
     <Background>
       <SafeAreaProvider style={{ flex: 1 }}>
-        <KeyboardAvoidingView 
-          style={{ flex: 1 }} 
-          enabled={true}
-        >
+        <KeyboardAvoidingView style={{ flex: 1 }} enabled>
           <View style={styles.container}>
-          <Text style={styles.title}>- EXPENCE -</Text>
+            <Text style={styles.title}>- SHORTCUTS -</Text>
 
-          <Screen userId={userId} sortAscending={sortAscending} onFilterChange={setSelectedFilter} />
-
-          <View style={styles.transactionsContainer}>
+            <View style={styles.transactionsContainer}>
               <View style={styles.transactionsHeader}>
-                <Pressable onPress={() => setSortAscending(!sortAscending)}><Text style={styles.transactionsHeaderTitle}>Transactions {sortAscending ? '🔼' : '🔽'}</Text></Pressable>
-                <Pressable onPress={() => router.push('/(tabs)/Transactions')}><Text style={styles.transactionsHeaderViewAll}>View All</Text></Pressable>
+                <Pressable onPress={() => setSortAscending(!sortAscending)}>
+                  <Text style={styles.transactionsHeaderTitle}>
+                    Shortcuts {sortAscending ? '🔼' : '🔽'}
+                  </Text>
+                </Pressable>
+              </View>
+
+              <ScrollView
+                showsVerticalScrollIndicator={false}
+                showsHorizontalScrollIndicator={false}
+                style={styles.transactionsList}
+                scrollEnabled={!refreshing}
+                refreshControl={
+                  <RefreshControl refreshing={refreshing} onRefresh={handleRefresh} tintColor="white" />
+                }
+              >
+                {items.length === 0 && isLoggedIn ? (
+                  <Text style={styles.emptyText}>No shortcuts yet — add one from the + tab</Text>
+                ) : null}
+
+                {items.map((item) => (
+                  <Transaction
+                    key={item.local_id}
+                    name={item.title}
+                    amount={item.amount}
+                    date={item.created_at}
+                    image={item.image}
+                    onDelete={() => setItemToDelete(item.local_id)}
+                    onEdit={() => handleEdit(item)}
+                    onPress={() => handleUseShortcut(item)}
+                  />
+                ))}
+                <View style={Platform.OS === 'ios' ? styles.bottomPaddingIOS : styles.bottomPaddingAndroid} />
+              </ScrollView>
+            </View>
           </View>
-
-          <ScrollView 
-            showsVerticalScrollIndicator={false} 
-            showsHorizontalScrollIndicator={false}
-            style={styles.transactionsList}
-            scrollEnabled={!refreshing}
-            refreshControl={
-              <RefreshControl 
-                refreshing={refreshing} 
-                onRefresh={handleRefresh}
-                tintColor="white"
-              />
-            }
-            >
-            
-
-
-            {items.map((item)=>{
-              return (<Transaction key= {item.id} name={item.title} amount={item.amount} date={item.created_at} image = {item.image}/>);
-            })}
-
-            <View style={Platform.OS === 'ios' ? styles.bottomPaddingIOS : styles.bottomPaddingAndroid} />
-  
-
-          </ScrollView>
-
-          </View>
-
-        </View>
-
-        
-        <StatusBar 
-                translucent
-                backgroundColor="transparent"
-                barStyle="light-content"
-                >
-        </StatusBar>
         </KeyboardAvoidingView>
+
+        <ConfirmationModal
+          visible={itemToDelete !== null}
+          title="DELETE SHORTCUT?"
+          body="Are you sure you want to delete this shortcut?"
+          confirmText="DELETE"
+          onConfirm={confirmDelete}
+          onCancel={() => setItemToDelete(null)}
+          danger
+        />
+
+        <StatusBar translucent backgroundColor="transparent" barStyle="light-content" />
       </SafeAreaProvider>
+
+      {/* ── Login Required Modal ── */}
+      <Modal
+        visible={showLoginModal}
+        transparent
+        animationType="fade"
+        onRequestClose={() => {
+          setShowLoginModal(false);
+          router.back();
+        }}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalCard}>
+            <Text style={styles.modalTitle}>LOGIN REQUIRED</Text>
+            <Text style={styles.modalBody}>
+              Shortcuts are synced to the cloud and require an account.{'\n\n'}
+              Log in or sign up to use this feature.
+            </Text>
+
+            <Pressable
+              style={styles.modalButtonPrimary}
+              onPress={() => {
+                setShowLoginModal(false);
+                router.push('/auth/Login');
+              }}
+            >
+              <Text style={styles.modalButtonTextPrimary}>LOGIN</Text>
+            </Pressable>
+
+            <Pressable
+              style={styles.modalButtonOutline}
+              onPress={() => {
+                setShowLoginModal(false);
+                router.push('/auth/Register');
+              }}
+            >
+              <Text style={styles.modalButtonTextOutline}>SIGN UP</Text>
+            </Pressable>
+
+            <Pressable
+              style={styles.modalButtonGhost}
+              onPress={() => {
+                setShowLoginModal(false);
+                router.back();
+              }}
+            >
+              <Text style={styles.modalButtonTextGhost}>MAYBE LATER</Text>
+            </Pressable>
+          </View>
+        </View>
+      </Modal>
     </Background>
-  )
+  );
 }
 
 const styles = StyleSheet.create({
-  container : {
-    paddingTop: "13%",
+  container: {
+    paddingTop: '13%',
     width: '100%',
-    flex: 1, 
-    alignItems: "center",
-    justifyContent: "flex-start",
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'flex-start',
     minWidth: 250,
     maxWidth: 400,
     alignSelf: 'center',
   },
-   button : {
-    color: 'blue',
-    padding: 10,
-   },
-   title : {
+  title: {
     width: '100%',
     textAlign: 'center',
     fontFamily: 'VCR-Mono',
     color: 'white',
     fontSize: 15,
     marginBottom: 20,
-   },
-   transactionsContainer:{
+  },
+  transactionsContainer: {
     width: '100%',
     minHeight: 450,
-   },
-
-   transactionsHeader: {
+  },
+  transactionsHeader: {
     alignSelf: 'center',
-    display: 'flex',
     flexDirection: 'row',
     justifyContent: 'space-between',
     padding: 5,
-    color: '#FFFFFF',
     width: '100%',
     minWidth: 250,
     maxWidth: 300,
-   },
-   transactionsHeaderTitle: {
+  },
+  transactionsHeaderTitle: {
     fontFamily: 'VCR-Mono',
     fontSize: 13,
     color: 'white',
-   },
-   transactionsHeaderViewAll: {
-    fontFamily: 'VCR-Mono',
-    fontSize: 13,
-    color: 'white',
-   },
-   transactionsList: {
-    display: 'flex',
-    alignContent: 'center',
+  },
+  transactionsList: {
     flexDirection: 'column',
     width: '100%',
     maxHeight: 500,
-    maxWidth: '100%',
     minWidth: 250,
-   },
-   bottomPaddingIOS :{
+  },
+  emptyText: {
+    fontFamily: 'VCR-Mono',
+    color: 'rgba(255,255,255,0.35)',
+    fontSize: 11,
+    textAlign: 'center',
+    marginTop: 32,
+    paddingHorizontal: 24,
+  },
+  bottomPaddingIOS: {
     height: 290,
-   },
-  bottomPaddingAndroid:{
-    paddingBottom:  100,
-  }
-  
-})
+  },
+  bottomPaddingAndroid: {
+    paddingBottom: 100,
+  },
+  // ── Modal ──
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.75)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: 24,
+  },
+  modalCard: {
+    backgroundColor: '#1d1d36',
+    borderRadius: 16,
+    padding: 28,
+    width: '100%',
+    maxWidth: 360,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.15)',
+    alignItems: 'center',
+  },
+  modalTitle: {
+    fontFamily: 'VCR-Mono',
+    color: 'white',
+    fontSize: 20,
+    marginBottom: 14,
+    textAlign: 'center',
+  },
+  modalBody: {
+    fontFamily: 'VCR-Mono',
+    color: 'rgba(255,255,255,0.65)',
+    fontSize: 12,
+    marginBottom: 24,
+    textAlign: 'center',
+    lineHeight: 20,
+  },
+  modalButtonPrimary: {
+    backgroundColor: 'white',
+    padding: 14,
+    borderRadius: 10,
+    width: '100%',
+    alignItems: 'center',
+    marginBottom: 10,
+  },
+  modalButtonTextPrimary: {
+    fontFamily: 'VCR-Mono',
+    color: 'black',
+    fontSize: 14,
+  },
+  modalButtonOutline: {
+    padding: 14,
+    borderRadius: 10,
+    width: '100%',
+    alignItems: 'center',
+    borderWidth: 1.5,
+    borderColor: 'rgba(255,255,255,0.5)',
+    marginBottom: 10,
+  },
+  modalButtonTextOutline: {
+    fontFamily: 'VCR-Mono',
+    color: 'white',
+    fontSize: 14,
+  },
+  modalButtonGhost: {
+    padding: 10,
+    width: '100%',
+    alignItems: 'center',
+  },
+  modalButtonTextGhost: {
+    fontFamily: 'VCR-Mono',
+    color: 'rgba(255,255,255,0.3)',
+    fontSize: 12,
+  },
+});
 
-export default Shortcuts
+export default Shortcuts;

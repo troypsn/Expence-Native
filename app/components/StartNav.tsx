@@ -1,76 +1,75 @@
-import { View, Text, StyleSheet, Pressable} from 'react-native';
-import Background from '../components/Background';
+import { View, Text, StyleSheet, Pressable } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useFonts } from 'expo-font';
-import { useState, useEffect } from 'react';
-import AsyncStorage from '@react-native-async-storage/async-storage';
+import { useAuth } from '@/lib/authContext';
 
+function StartNav() {
+  const [fontsLoaded] = useFonts({
+    'VCR-Mono': require('../../assets/fonts/VCR_OSD_MONO_1.001.ttf'),
+  });
 
-export type GreetingProps = {
-  loggedIn: boolean;
-};
+  const router = useRouter();
+  const { continueAsGuest } = useAuth();
 
+  if (!fontsLoaded) return null;
 
-function StartNav({loggedIn} : GreetingProps) {
+  const handleGuest = async () => {
+    await continueAsGuest();
+    router.replace('/(tabs)/Home');
+  };
 
-  useEffect(() => {
-    console.log('StartNav useEffect - loggedIn:', loggedIn);
-  }, []);
-  
-    const [fontsLoaded] = useFonts({
-        'VCR-Mono': require('../../assets/fonts/VCR_OSD_MONO_1.001.ttf'),
-    });
-
-    if (!fontsLoaded){
-        return null;
-    }
-    const router = useRouter();
-
-    console.log('StartNav rendered with loggedIn:', loggedIn);
-  
-  
   return (
-      <View style={styles.container}>
+    <View style={styles.container}>
+      <Pressable onPress={() => router.push('/auth/Login')} style={styles.button}>
+        <Text style={styles.navText}>LOGIN</Text>
+      </Pressable>
 
-        <Pressable  onPress={()=> router.push('/(tabs)/Home')} style={{display: loggedIn ? 'flex' : 'none'}}>
-          <Text style= {styles.navText}>HOME</Text>
-        </Pressable>
-        
-        <Pressable  onPress={()=> router.push('/auth/Login')}>
-          <Text style= {styles.navText}>LOGIN</Text>
-        </Pressable>
+      <Pressable onPress={() => router.push('/auth/Register')} style={styles.button}>
+        <Text style={styles.navText}>SIGN UP</Text>
+      </Pressable>
 
-        <Pressable  onPress={()=> router.push('/auth/Register')}>
-          <Text style= {styles.navText}>SIGN UP</Text>
-        </Pressable>
+      <Pressable onPress={handleGuest} style={[styles.button, styles.guestButton]}>
+        <Text style={[styles.navText, styles.guestText]}>USE WITHOUT ACCOUNT</Text>
+      </Pressable>
 
-        <Pressable  onPress={()=> router.push('/main/About')}>
-          <Text style= {styles.navText}>ABOUT</Text>
-        </Pressable>
-
-         <Pressable  onPress={()=> AsyncStorage.clear()}>
-          <Text style= {styles.navText}>CLEAR</Text>
-        </Pressable>
-        
-      </View>
-  )
+      <Pressable onPress={() => router.push('/main/About')} style={styles.button}>
+        <Text style={[styles.navText, styles.smallText]}>ABOUT</Text>
+      </Pressable>
+    </View>
+  );
 }
 
 const styles = StyleSheet.create({
-  container : {
+  container: {
     padding: 10,
-    flex: 1, 
-    alignItems: "center",
-    justifyContent: "space-around",
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'space-around',
     maxHeight: 450,
-
   },
-   navText : {
+  button: {
+    alignItems: 'center',
+  },
+  navText: {
     color: 'white',
     padding: 8,
     fontFamily: 'VCR-Mono',
     fontSize: 24,
-  }
-})
+  },
+  guestButton: {
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.3)',
+    borderRadius: 8,
+    paddingHorizontal: 8,
+  },
+  guestText: {
+    fontSize: 14,
+    color: 'rgba(255,255,255,0.6)',
+  },
+  smallText: {
+    fontSize: 14,
+    color: 'rgba(255,255,255,0.4)',
+  },
+});
 
-export default StartNav
+export default StartNav;

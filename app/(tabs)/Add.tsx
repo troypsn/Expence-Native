@@ -1,236 +1,284 @@
-import { View, Text, StyleSheet, StatusBar, TextInput, Platform, KeyboardAvoidingView, Pressable, Alert, ActivityIndicator, Keyboard, Image} from 'react-native'
+import {
+  View, Text, StyleSheet, StatusBar, TextInput, Platform,
+  KeyboardAvoidingView, Pressable, Alert, ActivityIndicator, Keyboard, Image, ScrollView
+} from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { useState, useEffect} from 'react';
+import { useState, useEffect } from 'react';
 import Background from '../components/Background';
 import { supabase } from '@/lib/supabase';
-import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useRouter } from 'expo-router';
-import money from '@/assets/images/money.png'
-import car from '@/assets/images/car.png'
-import food from '@/assets/images/food.png'
+import { useAuth } from '@/lib/authContext';
+import { useNetwork } from '@/lib/networkContext';
+import { insertTransaction, insertShortcut } from '@/lib/db';
+import money from '@/assets/images/money.png';
+import car from '@/assets/images/car.png';
+import food from '@/assets/images/food.png';
 
 export default function Add() {
   const router = useRouter();
-  const [userId, setUserId] = useState<string | null>(null);
-  const [icon, setIcon] = useState("money");
+  const { isLoggedIn, isGuest, userId } = useAuth();
+  const { isOnline } = useNetwork();
 
+  const [icon, setIcon] = useState('money');
+  const [type, setType] = useState('expense');
   const [expenseDetails, setExpenseDetails] = useState({
     title: '',
     amount: '',
     description: '',
   });
 
+  const [loading, setLoading] = useState(false);
 
+  async function handleAdd(addType: string) {
+    if (loading) return;
 
-  async function handleAddExpense() {
-    const expense = {
-      title: expenseDetails.title,
-      amount: parseFloat(expenseDetails.amount),
-      image: icon,
-      description : expenseDetails.description
-    };
+    // Shortcuts require a logged-in account
+    if (addType === 'shortcut' && !isLoggedIn) {
+      Alert.alert(
+        'Login Required',
+        'You need an account to create shortcuts. Shortcuts are synced to the cloud.',
+        [
+          { text: 'Cancel', style: 'cancel' },
+          { text: 'Login', onPress: () => router.push('/auth/Login') },
+        ]
+      );
+      return;
+    }
 
-    if (!expense.title || !expense.amount || !expense.description) {
+    const { title, amount, description } = expenseDetails;
+
+    if (!title.trim() || !amount.trim() || !description.trim()) {
       Alert.alert('Error', 'Please fill in all fields.');
       return;
     }
 
+    setLoading(true);
+    const now = new Date().toISOString();
 
-    console.log('Adding expense:', expense);
+    if (addType === 'expense') {
+      // ─── Save expense to local SQLite first (always) ───
+      const localId = await insertTransaction({
+        remote_id: null,
+        user_id: isLoggedIn ? userId : null,
+        title,
+        amount: parseFloat(amount),
+        image: icon,
+        description,
+        created_at: now,
+        synced: 0,
+        is_guest: isGuest ? 1 : 0,
+      });
 
-    let query = supabase.from('transactions').insert({user_id: userId, title: expense.title, amount: expense.amount, image: expense.image, description: expense.description});
+      // ─── Background Sync to Supabase ───
+      if (isLoggedIn && isOnline && userId) {
+        (async () => {
+          try {
+            const { data, error } = await supabase
+              .from('transactions')
+              .insert({ user_id: userId, title, amount: parseFloat(amount), image: icon, description, created_at: now })
+              .select('transaction_id')
+              .single();
 
-    const { data, error } = await query;
-
-    if (error) {
-      console.log('Error adding expense:', error);
-      Alert.alert('Error', 'There was an error adding the expense. Please try again.');
-    } else {
-
-    setExpenseDetails({
-      title: '',
-      amount: '',
-      description: '',
-    });
-
-      console.log('Expense added successfully:', data);
-      Alert.alert('Success', 'Expense added successfully!');
-      router.push('/(tabs)/Home');
-    }
-    
-  }
-
-
-
-
-
-  useEffect(() => {
-    const getUserId = async () => {
-      let id = await AsyncStorage.getItem('userId');
- 
-      if (id && id.startsWith('"')) {
-        id = JSON.parse(id);
+            if (!error && data?.transaction_id) {
+              const { markTransactionSynced } = await import('@/lib/db');
+              await markTransactionSynced(localId, data.transaction_id);
+            }
+          } catch (e) {
+            console.warn('[add] Background sync failed:', e);
+          }
+        })();
       }
-      setUserId(id);
-      console.log('User ID from storage:', id);
-    };
-    getUserId();
-  }, []);
 
-  
-  
+    } else {
+      // ─── Shortcut (only for logged-in users) ───
+      const localId = await insertShortcut({
+        remote_id: null,
+        user_id: userId,
+        title,
+        amount: parseFloat(amount),
+        image: icon,
+        description,
+        created_at: now,
+        synced: 0,
+        is_guest: 0,
+      });
+
+      // ─── Background Sync to Supabase ───
+      if (isOnline && userId) {
+        (async () => {
+          try {
+            const { data, error } = await supabase
+              .from('shortcuts')
+              .insert({ user_id: userId, title, amount: parseFloat(amount), image: icon, description, created_at: now })
+              .select('shortcut_id')
+              .single();
+
+            if (!error && data?.shortcut_id) {
+              const { markShortcutSynced } = await import('@/lib/db');
+              await markShortcutSynced(localId, data.shortcut_id);
+            }
+          } catch (e) {
+            console.warn('[add] Background sync failed:', e);
+          }
+        })();
+      }
+    }
+
+    // ─── Immediate Feedback ───
+    setExpenseDetails({ title: '', amount: '', description: '' });
+    setLoading(false);
+    Alert.alert('Success', `${addType === 'expense' ? 'Expense' : 'Shortcut'} saved locally!`);
+    router.replace('/(tabs)/Home');
+  }
 
   return (
     <Background>
+      <SafeAreaView style={{ flex: 1 }}>
+        <KeyboardAvoidingView
+          behavior={Platform.OS === "ios" ? "padding" : "height"}
+          style={{ flex: 1 }}
+          keyboardVerticalOffset={Platform.OS === "ios" ? 0 : 20}
+        >
+          <ScrollView
+            contentContainerStyle={styles.scrollContainer}
+            showsVerticalScrollIndicator={false}
+            keyboardShouldPersistTaps="handled"
+          >
+            <Text style={styles.title}>Add</Text>
 
-      
-        <SafeAreaView style={styles.container}>
-  
-                <Text style={styles.title}>Add Expense</Text>
-
-                <View style={styles.inputContainer}>
-
-                  <Text style={styles.label}>Select Icon</Text>
-
-                  <View style={styles.pickIcon}>
-                      
-                      <Pressable onPress={() => setIcon("money")} style={styles.iconContainer}> 
-                        <Image source={money} style={[styles.icon, icon === "money" && styles.selectedIcon]} /> 
-                      </Pressable> 
-                      <Pressable onPress={() => setIcon("car")} style={styles.iconContainer}> 
-                        <Image source={car} style={[styles.icon, icon === "car" && styles.selectedIcon]} /> 
-                      </Pressable>
-                      <Pressable onPress={() => setIcon("food")} style={styles.iconContainer}> 
-                        <Image source={food} style={[styles.icon, icon === "food" && styles.selectedIcon]} /> 
-                      </Pressable>
-
-                  </View>
-                  
-                </View>
-
-                <View style={styles.inputContainer}>
-                  <Text style={styles.label}>Title</Text>
-                    <TextInput
-                        placeholder="Enter Expense Title"
-                        placeholderTextColor="gray"
-                        style={styles.textInput}
-                        onChangeText={(text) => setExpenseDetails({ ...expenseDetails, title: text})}
-                    />
-                </View>
-
-                <View style={styles.inputContainer}>
-                  <Text style={styles.label}>Amount</Text>
-                    <TextInput
-                        placeholder="Enter Expense Amount"
-                        placeholderTextColor="gray"
-                        style={styles.textInput}
-                        keyboardType="numeric"
-                        onChangeText={(text) => setExpenseDetails({ ...expenseDetails, amount: text})}
-                    />
-                </View>
-
-                <View style={styles.inputContainer}>
-                  <Text style={styles.label}>Description</Text>
-                    <TextInput
-                        placeholder="Enter Expense Description"
-                        placeholderTextColor="gray"
-                        style={styles.textInputDescription}
-                        multiline={true}
-                        textAlignVertical="top"
-                        onChangeText={(text) => setExpenseDetails({ ...expenseDetails, description: text})}
-                    />
-                </View>
-
-                
-
-                
-
-                <Pressable style={styles.addButton} onPress={() => handleAddExpense()}>
-                  <Text style={styles.addButtonText}>Add Expense</Text>
+            <View style={styles.inputContainer}>
+              <Text style={styles.label}>Select Type</Text>
+              <View style={styles.pickIcon}>
+                <Pressable onPress={() => setType('expense')} style={styles.typeContainer}>
+                  <Text style={[styles.type, type === 'expense' && styles.typeSelected]}>Expense</Text>
                 </Pressable>
+                {isLoggedIn && (
+                  <Pressable onPress={() => setType('shortcut')} style={styles.typeContainer}>
+                    <Text style={[styles.type, type === 'shortcut' && styles.typeSelected]}>Shortcut</Text>
+                  </Pressable>
+                )}
+              </View>
+            </View>
 
-            <StatusBar 
-            translucent
-            backgroundColor="transparent"
-            barStyle="light-content"
-            >
-            </StatusBar>
-       
- 
+            <View style={styles.inputContainer}>
+              <Text style={styles.label}>Select Icon</Text>
+              <View style={styles.pickIcon}>
+                <Pressable onPress={() => setIcon('money')} style={styles.iconContainer}>
+                  <Image source={money} style={[styles.icon, icon === 'money' && styles.selectedIcon]} />
+                </Pressable>
+                <Pressable onPress={() => setIcon('car')} style={styles.iconContainer}>
+                  <Image source={car} style={[styles.icon, icon === 'car' && styles.selectedIcon]} />
+                </Pressable>
+                <Pressable onPress={() => setIcon('food')} style={styles.iconContainer}>
+                  <Image source={food} style={[styles.icon, icon === 'food' && styles.selectedIcon]} />
+                </Pressable>
+              </View>
+            </View>
 
-        <Text style={styles.status}>{}</Text>
+            <View style={styles.inputContainer}>
+              <Text style={styles.label}>Title</Text>
+              <TextInput
+                placeholder="Enter Expense Title"
+                placeholderTextColor="gray"
+                style={styles.textInput}
+                value={expenseDetails.title}
+                onChangeText={(text) => setExpenseDetails({ ...expenseDetails, title: text })}
+              />
+            </View>
 
-        </SafeAreaView>
-  
+            <View style={styles.inputContainer}>
+              <Text style={styles.label}>Amount</Text>
+              <TextInput
+                placeholder="Enter Expense Amount"
+                placeholderTextColor="gray"
+                style={styles.textInput}
+                keyboardType="numeric"
+                value={expenseDetails.amount}
+                onChangeText={(text) => setExpenseDetails({ ...expenseDetails, amount: text })}
+              />
+            </View>
+
+            <View style={styles.inputContainer}>
+              <Text style={styles.label}>Description</Text>
+              <TextInput
+                placeholder="Enter Expense Description"
+                placeholderTextColor="gray"
+                style={styles.textInputDescription}
+                multiline
+                textAlignVertical="top"
+                value={expenseDetails.description}
+                onChangeText={(text) => setExpenseDetails({ ...expenseDetails, description: text })}
+              />
+            </View>
+
+            <Pressable style={styles.addButton} onPress={() => handleAdd(type)}>
+              <Text style={styles.addButtonText}>Add {type === 'expense' ? 'Expense' : 'Shortcut'}</Text>
+            </Pressable>
+
+            {/* Offline indicator */}
+            {!isOnline && (
+              <View style={styles.offlineBanner}>
+                <Text style={styles.offlineBannerText}>⚡ OFFLINE — will sync when online</Text>
+              </View>
+            )}
+            
+            <View style={{ height: 100 }} />
+          </ScrollView>
+        </KeyboardAvoidingView>
+
+        <StatusBar translucent backgroundColor="transparent" barStyle="light-content" />
+      </SafeAreaView>
     </Background>
-  )
+  );
 }
 
-
 const styles = StyleSheet.create({
-  container :{
-    flex: 1,
-    alignItems: "center",
-    justifyContent: "center",
-    width: '100%',
-    maxWidth: 500,
-  },
-
-  KeyboardAvoidingViewStyle :{
-    alignSelf: 'center',
-    justifyContent: 'center',
-    width: '100%',
-    height: '100%',
-    maxWidth: 500,
-  },
-
-  formContainer: {
+  container: {
     flex: 1,
     alignItems: 'center',
-    justifyContent: 'center',
     width: '100%',
     maxWidth: 500,
-  
+  },
+  scrollContainer: {
+    flexGrow: 1,
+    alignItems: 'center',
+    width: '100%',
+    paddingTop: 50,
   },
   inputContainer: {
     padding: 5,
-    display: 'flex',
     alignItems: 'flex-start',
     justifyContent: 'center',
     width: '70%',
     marginBottom: 16,
   },
-  pickIcon:{
+  pickIcon: {
     marginTop: 8,
-    display: 'flex',
     flexDirection: 'row',
     justifyContent: 'space-between',
     gap: 10,
     width: '100%',
   },
-  iconContainer:{
+  iconContainer: {
     width: 50,
     height: 50,
-    display: 'flex',
     justifyContent: 'center',
-    alignItems: 'center', 
+    alignItems: 'center',
     padding: 5,
   },
-  icon:{
-    padding:20,
+  icon: {
     width: 40,
     height: 40,
     margin: 10,
   },
-  selectedIcon:{
-    padding:10,
+  selectedIcon: {
     width: 40,
     height: 40,
     margin: 10,
     borderColor: 'white',
     borderWidth: 1.5,
   },
-  textInputDescription:{
+  textInputDescription: {
     padding: 5,
     height: 100,
     marginBottom: 16,
@@ -239,11 +287,10 @@ const styles = StyleSheet.create({
     borderColor: 'white',
     borderRadius: 10,
     color: 'white',
-    width: 40,
     minWidth: '100%',
     overflow: 'hidden',
   },
-  textInput : {
+  textInput: {
     fontFamily: 'VCR-Mono',
     color: 'white',
     width: '100%',
@@ -254,40 +301,53 @@ const styles = StyleSheet.create({
     paddingHorizontal: 10,
     borderRadius: 10,
   },
-  label : {
+  label: {
     fontFamily: 'VCR-Mono',
     color: 'white',
     marginBottom: 4,
   },
-  title : {
+  title: {
     fontFamily: 'VCR-Mono',
     color: 'white',
     fontSize: 28,
     marginBottom: 20,
   },
-  addButton : {
+  addButton: {
     backgroundColor: 'white',
     padding: 15,
     borderRadius: 10,
     width: '67%',
     alignItems: 'center',
     justifyContent: 'center',
-    marginBottom: 50,
+    marginBottom: 20,
   },
-  addButtonText : {
+  addButtonText: {
     fontFamily: 'VCR-Mono',
     color: 'black',
     fontSize: 18,
-    
   },
-  status: {
-    fontFamily: 'VCR-Mono',
+  typeContainer: {
+    justifyContent: 'space-between',
+  },
+  type: {
     color: 'white',
-    marginTop: 20,
-    textAlign: 'center',
-    paddingHorizontal: 20,
-  }
+    fontFamily: 'VCR-Mono',
+  },
+  typeSelected: {
+    color: 'red',
+  },
+  offlineBanner: {
+    marginTop: 4,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 8,
+    backgroundColor: 'rgba(255, 180, 0, 0.15)',
+    borderWidth: 1,
+    borderColor: 'rgba(255, 180, 0, 0.4)',
+  },
+  offlineBannerText: {
+    fontFamily: 'VCR-Mono',
+    color: 'rgba(255, 200, 0, 0.9)',
+    fontSize: 11,
+  },
 });
-
-
-

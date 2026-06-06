@@ -21,8 +21,9 @@ export default function TabsLayout() {
         headerShown: false,
         tabBarShowLabel: true,
         tabBarStyle: styles.tabBar,
+        animation: "shift",
       }}
-    
+      sceneContainerStyle={{ backgroundColor: "#151269" }}
     >
       <Tabs.Screen
         name="Home"
