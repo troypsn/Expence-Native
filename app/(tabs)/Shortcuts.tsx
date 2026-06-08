@@ -1,17 +1,29 @@
+import { useAuth } from "@/lib/authContext";
+import { deleteShortcut, getShortcuts, insertTransaction } from "@/lib/db";
+import { useNetwork } from "@/lib/networkContext";
+import { supabase } from "@/lib/supabase";
+import * as ImagePicker from "expo-image-picker";
+import { useFocusEffect, useRouter } from "expo-router";
+import { useCallback, useEffect, useState } from "react";
 import {
-  View, Text, StyleSheet, StatusBar, Pressable,
-  ScrollView, Platform, RefreshControl, KeyboardAvoidingView, Modal, Alert, LayoutAnimation, UIManager
-} from 'react-native';
-import Background from '../components/Background';
-import { useRouter, useFocusEffect } from 'expo-router';
-import Transaction from '../components/Transaction';
-import { SafeAreaProvider } from 'react-native-safe-area-context';
-import { useEffect, useState, useCallback } from 'react';
-import { useAuth } from '@/lib/authContext';
-import { getShortcuts, deleteShortcut, insertTransaction } from '@/lib/db';
-import { supabase } from '@/lib/supabase';
-import { useNetwork } from '@/lib/networkContext';
-import ConfirmationModal from '../components/ConfirmationModal';
+  Alert,
+  KeyboardAvoidingView,
+  LayoutAnimation,
+  Modal,
+  Platform,
+  Pressable,
+  RefreshControl,
+  ScrollView,
+  StatusBar,
+  StyleSheet,
+  Text,
+  UIManager,
+  View,
+} from "react-native";
+import { SafeAreaProvider } from "react-native-safe-area-context";
+import Background from "../components/Background";
+import ConfirmationModal from "../components/ConfirmationModal";
+import Transaction from "../components/Transaction";
 
 function Shortcuts() {
   const router = useRouter();
@@ -25,57 +37,111 @@ function Shortcuts() {
   const [itemToDelete, setItemToDelete] = useState<number | null>(null);
   const [loading, setLoading] = useState(false);
 
+  const addTransactionFromShortcut = async (item: any, photoUri?: string) => {
+    const now = new Date().toISOString();
+    const selectedImage = photoUri ?? item.image ?? "money";
+    const isLocalPhoto =
+      selectedImage?.startsWith("file://") ||
+      selectedImage?.startsWith("content://") ||
+      selectedImage?.startsWith("data:");
+
+    const localId = await insertTransaction({
+      remote_id: null,
+      user_id: userId,
+      title: item.title,
+      amount: item.amount,
+      image: selectedImage,
+      description: item.description || "Shortcut usage",
+      created_at: now,
+      synced: 0,
+      is_guest: isGuest ? 1 : 0,
+    });
+
+    if (!isLocalPhoto && isLoggedIn && isOnline && userId) {
+      (async () => {
+        try {
+          const { data, error } = await supabase
+            .from("transactions")
+            .insert({
+              user_id: userId,
+              title: item.title,
+              amount: item.amount,
+              image: selectedImage,
+              description: item.description || "Shortcut usage",
+              created_at: now,
+            })
+            .select("transaction_id")
+            .single();
+
+          if (!error && data?.transaction_id) {
+            const { markTransactionSynced } = await import("@/lib/db");
+            await markTransactionSynced(localId, data.transaction_id);
+          }
+        } catch (e) {
+          console.warn("[shortcuts] Sync failed:", e);
+        }
+      })();
+    }
+
+    Alert.alert("Success", `Added ${item.title} to transactions!`);
+    router.replace("/(tabs)/Home");
+  };
+
+  const takePhotoForShortcut = async (item: any) => {
+    try {
+      const { status } = await ImagePicker.requestCameraPermissionsAsync();
+      if (status !== "granted") {
+        Alert.alert(
+          "Permissions needed",
+          "Please allow camera access to take a photo for this shortcut.",
+        );
+        return;
+      }
+
+      const result = await ImagePicker.launchCameraAsync({
+        allowsEditing: true,
+        aspect: [4, 3],
+        quality: 0.7,
+      });
+
+      if (result.canceled || !result.assets?.length) {
+        return;
+      }
+
+      await addTransactionFromShortcut(item, result.assets[0].uri);
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const handleUseShortcut = async (item: any) => {
     if (loading) return;
     setLoading(true);
 
-    const now = new Date().toISOString();
     try {
-      const localId = await insertTransaction({
-        remote_id: null,
-        user_id: userId,
-        title: item.title,
-        amount: item.amount,
-        image: item.image,
-        description: item.description || 'Shortcut usage',
-        created_at: now,
-        synced: 0,
-        is_guest: isGuest ? 1 : 0,
-      });
-
-      // Background sync
-      if (isLoggedIn && isOnline && userId) {
-        (async () => {
-          try {
-            const { data, error } = await supabase
-              .from('transactions')
-              .insert({
-                user_id: userId,
-                title: item.title,
-                amount: item.amount,
-                image: item.image,
-                description: item.description || 'Shortcut usage',
-                created_at: now
-              })
-              .select('transaction_id')
-              .single();
-
-            if (!error && data?.transaction_id) {
-              const { markTransactionSynced } = await import('@/lib/db');
-              await markTransactionSynced(localId, data.transaction_id);
-            }
-          } catch (e) {
-            console.warn('[shortcuts] Sync failed:', e);
-          }
-        })();
+      if (item.require_photo === 1) {
+        Alert.alert(
+          "Photo Required",
+          "This shortcut requires a photo. Take one now?",
+          [
+            {
+              text: "Cancel",
+              style: "cancel",
+              onPress: () => setLoading(false),
+            },
+            { text: "Take Photo", onPress: () => takePhotoForShortcut(item) },
+          ],
+        );
+        return;
       }
 
-      Alert.alert('Success', `Added ${item.title} to transactions!`);
-      router.replace('/(tabs)/Home');
+      await addTransactionFromShortcut(item);
     } catch (e) {
-      Alert.alert('Error', 'Failed to add transaction.');
+      Alert.alert("Error", "Failed to add transaction.");
     } finally {
-      setLoading(false);
+      if (!item.require_photo) {
+        setLoading(false);
+      }
     }
   };
 
@@ -91,7 +157,7 @@ function Shortcuts() {
       if (!isLoggedIn || !userId) return [];
       return getShortcuts(userId, ascending);
     },
-    [userId, isLoggedIn]
+    [userId, isLoggedIn],
   );
 
   const handleRefresh = async () => {
@@ -104,9 +170,12 @@ function Shortcuts() {
   const confirmDelete = async () => {
     if (itemToDelete === null) return;
 
-    const shortcutToDelete = items.find(i => i.local_id === itemToDelete);
+    const shortcutToDelete = items.find((i) => i.local_id === itemToDelete);
 
-    if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
+    if (
+      Platform.OS === "android" &&
+      UIManager.setLayoutAnimationEnabledExperimental
+    ) {
       UIManager.setLayoutAnimationEnabledExperimental(true);
     }
 
@@ -114,13 +183,14 @@ function Shortcuts() {
     if (isLoggedIn && isOnline && shortcutToDelete?.remote_id) {
       try {
         const { error } = await supabase
-          .from('shortcuts')
+          .from("shortcuts")
           .delete()
-          .eq('shortcut_id', shortcutToDelete.remote_id);
+          .eq("shortcut_id", shortcutToDelete.remote_id);
 
-        if (error) console.warn('[shortcuts] Remote delete failed:', error.message);
+        if (error)
+          console.warn("[shortcuts] Remote delete failed:", error.message);
       } catch (e) {
-        console.warn('[shortcuts] Remote delete error:', e);
+        console.warn("[shortcuts] Remote delete error:", e);
       }
     }
 
@@ -142,7 +212,7 @@ function Shortcuts() {
   useFocusEffect(
     useCallback(() => {
       loadShortcuts(sortAscending).then(setItems);
-    }, [userId, isLoggedIn, sortAscending])
+    }, [userId, isLoggedIn, sortAscending]),
   );
 
   return (
@@ -156,7 +226,7 @@ function Shortcuts() {
               <View style={styles.transactionsHeader}>
                 <Pressable onPress={() => setSortAscending(!sortAscending)}>
                   <Text style={styles.transactionsHeaderTitle}>
-                    Shortcuts {sortAscending ? '🔼' : '🔽'}
+                    Shortcuts {sortAscending ? "🔼" : "🔽"}
                   </Text>
                 </Pressable>
               </View>
@@ -167,11 +237,17 @@ function Shortcuts() {
                 style={styles.transactionsList}
                 scrollEnabled={!refreshing}
                 refreshControl={
-                  <RefreshControl refreshing={refreshing} onRefresh={handleRefresh} tintColor="white" />
+                  <RefreshControl
+                    refreshing={refreshing}
+                    onRefresh={handleRefresh}
+                    tintColor="white"
+                  />
                 }
               >
                 {items.length === 0 && isLoggedIn ? (
-                  <Text style={styles.emptyText}>No shortcuts yet — add one from the + tab</Text>
+                  <Text style={styles.emptyText}>
+                    No shortcuts yet — add one from the + tab
+                  </Text>
                 ) : null}
 
                 {items.map((item) => (
@@ -186,7 +262,13 @@ function Shortcuts() {
                     onPress={() => handleUseShortcut(item)}
                   />
                 ))}
-                <View style={Platform.OS === 'ios' ? styles.bottomPaddingIOS : styles.bottomPaddingAndroid} />
+                <View
+                  style={
+                    Platform.OS === "ios"
+                      ? styles.bottomPaddingIOS
+                      : styles.bottomPaddingAndroid
+                  }
+                />
               </ScrollView>
             </View>
           </View>
@@ -202,7 +284,11 @@ function Shortcuts() {
           danger
         />
 
-        <StatusBar translucent backgroundColor="transparent" barStyle="light-content" />
+        <StatusBar
+          translucent
+          backgroundColor="transparent"
+          barStyle="light-content"
+        />
       </SafeAreaProvider>
 
       {/* ── Login Required Modal ── */}
@@ -219,7 +305,7 @@ function Shortcuts() {
           <View style={styles.modalCard}>
             <Text style={styles.modalTitle}>LOGIN REQUIRED</Text>
             <Text style={styles.modalBody}>
-              Shortcuts are synced to the cloud and require an account.{'\n\n'}
+              Shortcuts are synced to the cloud and require an account.{"\n\n"}
               Log in or sign up to use this feature.
             </Text>
 
@@ -227,7 +313,7 @@ function Shortcuts() {
               style={styles.modalButtonPrimary}
               onPress={() => {
                 setShowLoginModal(false);
-                router.push('/auth/Login');
+                router.push("/auth/Login");
               }}
             >
               <Text style={styles.modalButtonTextPrimary}>LOGIN</Text>
@@ -237,7 +323,7 @@ function Shortcuts() {
               style={styles.modalButtonOutline}
               onPress={() => {
                 setShowLoginModal(false);
-                router.push('/auth/Register');
+                router.push("/auth/Register");
               }}
             >
               <Text style={styles.modalButtonTextOutline}>SIGN UP</Text>
@@ -261,52 +347,52 @@ function Shortcuts() {
 
 const styles = StyleSheet.create({
   container: {
-    paddingTop: '13%',
-    width: '100%',
+    paddingTop: "13%",
+    width: "100%",
     flex: 1,
-    alignItems: 'center',
-    justifyContent: 'flex-start',
+    alignItems: "center",
+    justifyContent: "flex-start",
     minWidth: 250,
     maxWidth: 400,
-    alignSelf: 'center',
+    alignSelf: "center",
   },
   title: {
-    width: '100%',
-    textAlign: 'center',
-    fontFamily: 'VCR-Mono',
-    color: 'white',
+    width: "100%",
+    textAlign: "center",
+    fontFamily: "VCR-Mono",
+    color: "white",
     fontSize: 15,
     marginBottom: 20,
   },
   transactionsContainer: {
-    width: '100%',
+    width: "100%",
     minHeight: 450,
   },
   transactionsHeader: {
-    alignSelf: 'center',
-    flexDirection: 'row',
-    justifyContent: 'space-between',
+    alignSelf: "center",
+    flexDirection: "row",
+    justifyContent: "space-between",
     padding: 5,
-    width: '100%',
+    width: "100%",
     minWidth: 250,
     maxWidth: 300,
   },
   transactionsHeaderTitle: {
-    fontFamily: 'VCR-Mono',
+    fontFamily: "VCR-Mono",
     fontSize: 13,
-    color: 'white',
+    color: "white",
   },
   transactionsList: {
-    flexDirection: 'column',
-    width: '100%',
+    flexDirection: "column",
+    width: "100%",
     maxHeight: 500,
     minWidth: 250,
   },
   emptyText: {
-    fontFamily: 'VCR-Mono',
-    color: 'rgba(255,255,255,0.35)',
+    fontFamily: "VCR-Mono",
+    color: "rgba(255,255,255,0.35)",
     fontSize: 11,
-    textAlign: 'center',
+    textAlign: "center",
     marginTop: 32,
     paddingHorizontal: 24,
   },
@@ -319,71 +405,71 @@ const styles = StyleSheet.create({
   // ── Modal ──
   modalOverlay: {
     flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.75)',
-    alignItems: 'center',
-    justifyContent: 'center',
+    backgroundColor: "rgba(0,0,0,0.75)",
+    alignItems: "center",
+    justifyContent: "center",
     padding: 24,
   },
   modalCard: {
-    backgroundColor: '#1d1d36',
+    backgroundColor: "#1d1d36",
     borderRadius: 16,
     padding: 28,
-    width: '100%',
+    width: "100%",
     maxWidth: 360,
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.15)',
-    alignItems: 'center',
+    borderColor: "rgba(255,255,255,0.15)",
+    alignItems: "center",
   },
   modalTitle: {
-    fontFamily: 'VCR-Mono',
-    color: 'white',
+    fontFamily: "VCR-Mono",
+    color: "white",
     fontSize: 20,
     marginBottom: 14,
-    textAlign: 'center',
+    textAlign: "center",
   },
   modalBody: {
-    fontFamily: 'VCR-Mono',
-    color: 'rgba(255,255,255,0.65)',
+    fontFamily: "VCR-Mono",
+    color: "rgba(255,255,255,0.65)",
     fontSize: 12,
     marginBottom: 24,
-    textAlign: 'center',
+    textAlign: "center",
     lineHeight: 20,
   },
   modalButtonPrimary: {
-    backgroundColor: 'white',
+    backgroundColor: "white",
     padding: 14,
     borderRadius: 10,
-    width: '100%',
-    alignItems: 'center',
+    width: "100%",
+    alignItems: "center",
     marginBottom: 10,
   },
   modalButtonTextPrimary: {
-    fontFamily: 'VCR-Mono',
-    color: 'black',
+    fontFamily: "VCR-Mono",
+    color: "black",
     fontSize: 14,
   },
   modalButtonOutline: {
     padding: 14,
     borderRadius: 10,
-    width: '100%',
-    alignItems: 'center',
+    width: "100%",
+    alignItems: "center",
     borderWidth: 1.5,
-    borderColor: 'rgba(255,255,255,0.5)',
+    borderColor: "rgba(255,255,255,0.5)",
     marginBottom: 10,
   },
   modalButtonTextOutline: {
-    fontFamily: 'VCR-Mono',
-    color: 'white',
+    fontFamily: "VCR-Mono",
+    color: "white",
     fontSize: 14,
   },
   modalButtonGhost: {
     padding: 10,
-    width: '100%',
-    alignItems: 'center',
+    width: "100%",
+    alignItems: "center",
   },
   modalButtonTextGhost: {
-    fontFamily: 'VCR-Mono',
-    color: 'rgba(255,255,255,0.3)',
+    fontFamily: "VCR-Mono",
+    color: "rgba(255,255,255,0.3)",
     fontSize: 12,
   },
 });

@@ -1,17 +1,29 @@
+import { useAuth } from "@/lib/authContext";
+import { deleteTransaction, getDb } from "@/lib/db";
+import { useNetwork } from "@/lib/networkContext";
+import { supabase } from "@/lib/supabase";
+import { useFocusEffect } from "expo-router";
+import { useCallback, useState } from "react";
 import {
-  View, Text, StyleSheet, StatusBar, TextInput, Pressable,
-  ScrollView, Platform, RefreshControl, Modal, TouchableOpacity, Alert, LayoutAnimation, UIManager
-} from 'react-native';
-import { SafeAreaProvider } from 'react-native-safe-area-context';
-import { useState, useCallback } from 'react';
-import { useFocusEffect } from 'expo-router';
-import Background from '../components/Background';
-import Transaction from '../components/Transaction';
-import { getDb, deleteTransaction } from '@/lib/db';
-import { useAuth } from '@/lib/authContext';
-import { useNetwork } from '@/lib/networkContext';
-import { supabase } from '@/lib/supabase';
-import ConfirmationModal from '../components/ConfirmationModal';
+    Alert,
+    LayoutAnimation,
+    Modal,
+    Platform,
+    Pressable,
+    RefreshControl,
+    ScrollView,
+    StatusBar,
+    StyleSheet,
+    Text,
+    TextInput,
+    UIManager,
+    View
+} from "react-native";
+import { SafeAreaProvider } from "react-native-safe-area-context";
+import Background from "../components/Background";
+import ConfirmationModal from "../components/ConfirmationModal";
+import Transaction from "../components/Transaction";
+import TransactionDetailsModal from "../components/TransactionDetailsModal";
 
 type LocalTransaction = {
   local_id: number;
@@ -24,33 +36,45 @@ type LocalTransaction = {
   is_guest: number;
 };
 
-type Preset = 'ALL' | 'TODAY' | 'THIS WEEK' | 'THIS MONTH' | 'THIS YEAR' | 'CUSTOM';
+type Preset =
+  | "ALL"
+  | "TODAY"
+  | "THIS WEEK"
+  | "THIS MONTH"
+  | "THIS YEAR"
+  | "CUSTOM";
 
 // ─── Helpers ───
 const parseDate = (d: string) => {
-  const parts = d.split('-');
+  const parts = d.split("-");
   if (parts.length !== 3) return null;
-  const date = new Date(parseInt(parts[0]), parseInt(parts[1]) - 1, parseInt(parts[2]));
+  const date = new Date(
+    parseInt(parts[0]),
+    parseInt(parts[1]) - 1,
+    parseInt(parts[2]),
+  );
   return isNaN(date.getTime()) ? null : date;
 };
 
-const getPresetRange = (p: Preset): { start: Date | null; end: Date | null } => {
+const getPresetRange = (
+  p: Preset,
+): { start: Date | null; end: Date | null } => {
   const now = new Date();
   let start = new Date(now);
   let end = new Date(now);
 
-  if (p === 'TODAY') {
+  if (p === "TODAY") {
     start.setHours(0, 0, 0, 0);
     end.setHours(23, 59, 59, 999);
-  } else if (p === 'THIS WEEK') {
+  } else if (p === "THIS WEEK") {
     const day = now.getDay();
     start.setDate(now.getDate() - day);
     start.setHours(0, 0, 0, 0);
     end.setHours(23, 59, 59, 999);
-  } else if (p === 'THIS MONTH') {
+  } else if (p === "THIS MONTH") {
     start = new Date(now.getFullYear(), now.getMonth(), 1);
     end = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59, 999);
-  } else if (p === 'THIS YEAR') {
+  } else if (p === "THIS YEAR") {
     start = new Date(now.getFullYear(), 0, 1);
     end = new Date(now.getFullYear(), 11, 31, 23, 59, 59, 999);
   } else {
@@ -67,12 +91,14 @@ export default function Transactions() {
   const [refreshing, setRefreshing] = useState(false);
 
   // Search
-  const [searchQuery, setSearchQuery] = useState('');
+  const [searchQuery, setSearchQuery] = useState("");
+  const [selectedTransaction, setSelectedTransaction] =
+    useState<LocalTransaction | null>(null);
 
   // Date filter
-  const [preset, setPreset] = useState<Preset>('ALL');
-  const [customStart, setCustomStart] = useState('');
-  const [customEnd, setCustomEnd] = useState('');
+  const [preset, setPreset] = useState<Preset>("ALL");
+  const [customStart, setCustomStart] = useState("");
+  const [customEnd, setCustomEnd] = useState("");
   const [showCustomModal, setShowCustomModal] = useState(false);
   const [sortAscending, setSortAscending] = useState(false);
   const [itemToDelete, setItemToDelete] = useState<number | null>(null);
@@ -84,10 +110,10 @@ export default function Transactions() {
       ? `WHERE is_guest = 1`
       : `WHERE user_id = ? AND is_guest = 0`;
     const params: any[] = isGuest ? [] : [userId];
-    const order = sortAscending ? 'ASC' : 'DESC';
+    const order = sortAscending ? "ASC" : "DESC";
     const rows = await db.getAllAsync<LocalTransaction>(
       `SELECT * FROM transactions ${whereClause} ORDER BY created_at ${order}`,
-      params
+      params,
     );
     setAllItems(rows);
   }, [userId, isGuest, sortAscending]);
@@ -101,9 +127,14 @@ export default function Transactions() {
   const confirmDelete = async () => {
     if (itemToDelete === null) return;
 
-    const transactionToDelete = allItems.find(i => i.local_id === itemToDelete);
+    const transactionToDelete = allItems.find(
+      (i) => i.local_id === itemToDelete,
+    );
 
-    if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
+    if (
+      Platform.OS === "android" &&
+      UIManager.setLayoutAnimationEnabledExperimental
+    ) {
       UIManager.setLayoutAnimationEnabledExperimental(true);
     }
 
@@ -111,13 +142,14 @@ export default function Transactions() {
     if (isLoggedIn && isOnline && transactionToDelete?.remote_id) {
       try {
         const { error } = await supabase
-          .from('transactions')
+          .from("transactions")
           .delete()
-          .eq('transaction_id', transactionToDelete.remote_id);
+          .eq("transaction_id", transactionToDelete.remote_id);
 
-        if (error) console.warn('[transactions] Remote delete failed:', error.message);
+        if (error)
+          console.warn("[transactions] Remote delete failed:", error.message);
       } catch (e) {
-        console.warn('[transactions] Remote delete error:', e);
+        console.warn("[transactions] Remote delete error:", e);
       }
     }
 
@@ -134,7 +166,7 @@ export default function Transactions() {
   useFocusEffect(
     useCallback(() => {
       loadAll();
-    }, [loadAll])
+    }, [loadAll]),
   );
   // ... existing filter logic ...
 
@@ -151,15 +183,17 @@ export default function Transactions() {
     }
 
     // Date preset / custom
-    if (preset === 'CUSTOM') {
+    if (preset === "CUSTOM") {
       const start = parseDate(customStart);
       const end = parseDate(customEnd);
       const created = new Date(item.created_at);
       if (start && created < start) return false;
       const endOfDay = end ? new Date(end.getTime()) : null;
-      if (endOfDay) { endOfDay.setUTCHours(23, 59, 59, 999); }
+      if (endOfDay) {
+        endOfDay.setUTCHours(23, 59, 59, 999);
+      }
       if (endOfDay && created > endOfDay) return false;
-    } else if (preset !== 'ALL') {
+    } else if (preset !== "ALL") {
       const { start, end } = getPresetRange(preset);
       const created = new Date(item.created_at);
       if (start && created < start) return false;
@@ -171,7 +205,14 @@ export default function Transactions() {
 
   const totalFiltered = filtered.reduce((sum, i) => sum + i.amount, 0);
 
-  const PRESETS: Preset[] = ['ALL', 'TODAY', 'THIS WEEK', 'THIS MONTH', 'THIS YEAR', 'CUSTOM'];
+  const PRESETS: Preset[] = [
+    "ALL",
+    "TODAY",
+    "THIS WEEK",
+    "THIS MONTH",
+    "THIS YEAR",
+    "CUSTOM",
+  ];
 
   return (
     <Background>
@@ -189,7 +230,10 @@ export default function Transactions() {
               onChangeText={setSearchQuery}
             />
             {searchQuery.length > 0 && (
-              <Pressable onPress={() => setSearchQuery('')} style={styles.clearBtn}>
+              <Pressable
+                onPress={() => setSearchQuery("")}
+                style={styles.clearBtn}
+              >
                 <Text style={styles.clearBtnText}>✕</Text>
               </Pressable>
             )}
@@ -206,17 +250,25 @@ export default function Transactions() {
               <Pressable
                 key={p}
                 onPress={() => {
-                  if (p === 'CUSTOM') {
+                  if (p === "CUSTOM") {
                     setShowCustomModal(true);
                   } else {
                     setPreset(p);
-                    setCustomStart('');
-                    setCustomEnd('');
+                    setCustomStart("");
+                    setCustomEnd("");
                   }
                 }}
-                style={[styles.presetChip, preset === p && styles.presetChipActive]}
+                style={[
+                  styles.presetChip,
+                  preset === p && styles.presetChipActive,
+                ]}
               >
-                <Text style={[styles.presetChipText, preset === p && styles.presetChipTextActive]}>
+                <Text
+                  style={[
+                    styles.presetChipText,
+                    preset === p && styles.presetChipTextActive,
+                  ]}
+                >
                   {p}
                 </Text>
               </Pressable>
@@ -224,19 +276,26 @@ export default function Transactions() {
           </ScrollView>
 
           {/* Custom date range label */}
-          {preset === 'CUSTOM' && (customStart || customEnd) && (
+          {preset === "CUSTOM" && (customStart || customEnd) && (
             <Text style={styles.customRangeLabel}>
-              {customStart || '...'} → {customEnd || '...'}
+              {customStart || "..."} → {customEnd || "..."}
             </Text>
           )}
 
           {/* ── Summary row ── */}
           <View style={styles.summaryRow}>
             <Text style={styles.summaryCount}>{filtered.length} records</Text>
-            <Pressable onPress={() => setSortAscending(!sortAscending)} style={styles.sortBtn}>
-              <Text style={styles.sortBtnText}>{sortAscending ? '🔼 Oldest' : '🔽 Newest'}</Text>
+            <Pressable
+              onPress={() => setSortAscending(!sortAscending)}
+              style={styles.sortBtn}
+            >
+              <Text style={styles.sortBtnText}>
+                {sortAscending ? "🔼 Oldest" : "🔽 Newest"}
+              </Text>
             </Pressable>
-            <Text style={styles.summaryTotal}>${Math.round(totalFiltered)}</Text>
+            <Text style={styles.summaryTotal}>
+              ${Math.round(totalFiltered)}
+            </Text>
           </View>
 
           {/* ── Transaction list ── */}
@@ -244,7 +303,11 @@ export default function Transactions() {
             showsVerticalScrollIndicator={false}
             style={styles.list}
             refreshControl={
-              <RefreshControl refreshing={refreshing} onRefresh={handleRefresh} tintColor="white" />
+              <RefreshControl
+                refreshing={refreshing}
+                onRefresh={handleRefresh}
+                tintColor="white"
+              />
             }
           >
             {filtered.length === 0 ? (
@@ -257,12 +320,19 @@ export default function Transactions() {
                   amount={item.amount}
                   date={item.created_at}
                   image={item.image}
+                  onPress={() => setSelectedTransaction(item)}
                   onDelete={() => setItemToDelete(item.local_id)}
                   onEdit={() => handleEdit(item)}
                 />
               ))
             )}
-            <View style={Platform.OS === 'ios' ? styles.bottomPaddingIOS : styles.bottomPaddingAndroid} />
+            <View
+              style={
+                Platform.OS === "ios"
+                  ? styles.bottomPaddingIOS
+                  : styles.bottomPaddingAndroid
+              }
+            />
           </ScrollView>
         </View>
 
@@ -276,9 +346,18 @@ export default function Transactions() {
           danger
         />
 
-        <StatusBar translucent backgroundColor="transparent" barStyle="light-content" />
-      </SafeAreaProvider>
+        <TransactionDetailsModal
+          visible={selectedTransaction !== null}
+          transaction={selectedTransaction}
+          onClose={() => setSelectedTransaction(null)}
+        />
 
+        <StatusBar
+          translucent
+          backgroundColor="transparent"
+          barStyle="light-content"
+        />
+      </SafeAreaProvider>
 
       {/* ── Custom Date Modal ── */}
       <Modal
@@ -313,7 +392,7 @@ export default function Transactions() {
               <Pressable
                 style={styles.modalApply}
                 onPress={() => {
-                  setPreset('CUSTOM');
+                  setPreset("CUSTOM");
                   setShowCustomModal(false);
                 }}
               >
@@ -323,7 +402,7 @@ export default function Transactions() {
                 style={styles.modalCancel}
                 onPress={() => {
                   setShowCustomModal(false);
-                  if (preset === 'CUSTOM') setPreset('ALL');
+                  if (preset === "CUSTOM") setPreset("ALL");
                 }}
               >
                 <Text style={styles.modalCancelText}>CANCEL</Text>
@@ -338,37 +417,37 @@ export default function Transactions() {
 
 const styles = StyleSheet.create({
   container: {
-    paddingTop: '13%',
+    paddingTop: "13%",
     flex: 1,
-    alignItems: 'center',
-    width: '100%',
+    alignItems: "center",
+    width: "100%",
     maxWidth: 420,
-    alignSelf: 'center',
+    alignSelf: "center",
   },
   title: {
-    textAlign: 'center',
-    fontFamily: 'VCR-Mono',
-    color: 'white',
+    textAlign: "center",
+    fontFamily: "VCR-Mono",
+    color: "white",
     fontSize: 15,
     marginBottom: 16,
   },
 
   // ── Search ──
   searchRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    width: '90%',
+    flexDirection: "row",
+    alignItems: "center",
+    width: "90%",
     borderWidth: 1.5,
-    borderColor: 'rgba(255,255,255,0.25)',
+    borderColor: "rgba(255,255,255,0.25)",
     borderRadius: 10,
     paddingHorizontal: 10,
     marginBottom: 10,
-    backgroundColor: 'rgba(255,255,255,0.05)',
+    backgroundColor: "rgba(255,255,255,0.05)",
   },
   searchInput: {
     flex: 1,
-    fontFamily: 'VCR-Mono',
-    color: 'white',
+    fontFamily: "VCR-Mono",
+    color: "white",
     height: 42,
     fontSize: 12,
   },
@@ -376,88 +455,88 @@ const styles = StyleSheet.create({
     padding: 4,
   },
   clearBtnText: {
-    color: 'rgba(255,255,255,0.4)',
+    color: "rgba(255,255,255,0.4)",
     fontSize: 14,
   },
 
   // ── Preset chips ──
   presetScroll: {
     maxHeight: 40,
-    width: '100%',
+    width: "100%",
   },
   presetContent: {
     paddingHorizontal: 16,
     gap: 8,
-    alignItems: 'center',
+    alignItems: "center",
   },
   presetChip: {
     paddingHorizontal: 12,
     paddingVertical: 6,
     borderRadius: 20,
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.2)',
-    backgroundColor: 'rgba(255,255,255,0.05)',
+    borderColor: "rgba(255,255,255,0.2)",
+    backgroundColor: "rgba(255,255,255,0.05)",
   },
   presetChipActive: {
-    backgroundColor: 'white',
-    borderColor: 'white',
+    backgroundColor: "white",
+    borderColor: "white",
   },
   presetChipText: {
-    fontFamily: 'VCR-Mono',
-    color: 'rgba(255,255,255,0.6)',
+    fontFamily: "VCR-Mono",
+    color: "rgba(255,255,255,0.6)",
     fontSize: 10,
   },
   presetChipTextActive: {
-    color: '#0f0f2e',
+    color: "#0f0f2e",
   },
   customRangeLabel: {
     marginTop: 6,
-    fontFamily: 'VCR-Mono',
-    color: 'rgba(255,255,255,0.5)',
+    fontFamily: "VCR-Mono",
+    color: "rgba(255,255,255,0.5)",
     fontSize: 10,
   },
 
   // ── Summary ──
   summaryRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    width: '90%',
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    width: "90%",
     marginTop: 10,
     marginBottom: 6,
   },
   summaryCount: {
-    fontFamily: 'VCR-Mono',
-    color: 'rgba(255,255,255,0.45)',
+    fontFamily: "VCR-Mono",
+    color: "rgba(255,255,255,0.45)",
     fontSize: 10,
   },
   sortBtn: {
     paddingHorizontal: 8,
     paddingVertical: 3,
     borderRadius: 6,
-    backgroundColor: 'rgba(255,255,255,0.07)',
+    backgroundColor: "rgba(255,255,255,0.07)",
   },
   sortBtnText: {
-    fontFamily: 'VCR-Mono',
-    color: 'rgba(255,255,255,0.6)',
+    fontFamily: "VCR-Mono",
+    color: "rgba(255,255,255,0.6)",
     fontSize: 10,
   },
   summaryTotal: {
-    fontFamily: 'VCR-Mono',
-    color: 'white',
+    fontFamily: "VCR-Mono",
+    color: "white",
     fontSize: 14,
   },
 
   // ── List ──
   list: {
-    width: '100%',
+    width: "100%",
     flex: 1,
   },
   emptyText: {
-    fontFamily: 'VCR-Mono',
-    color: 'rgba(255,255,255,0.3)',
+    fontFamily: "VCR-Mono",
+    color: "rgba(255,255,255,0.3)",
     fontSize: 12,
-    textAlign: 'center',
+    textAlign: "center",
     marginTop: 40,
   },
   bottomPaddingIOS: { height: 120 },
@@ -466,71 +545,71 @@ const styles = StyleSheet.create({
   // ── Modal ──
   modalOverlay: {
     flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.7)',
-    alignItems: 'center',
-    justifyContent: 'center',
+    backgroundColor: "rgba(0,0,0,0.7)",
+    alignItems: "center",
+    justifyContent: "center",
     padding: 24,
   },
   modalCard: {
-    backgroundColor: '#1d1d36',
+    backgroundColor: "#1d1d36",
     borderRadius: 16,
     padding: 24,
-    width: '100%',
+    width: "100%",
     maxWidth: 340,
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.15)',
+    borderColor: "rgba(255,255,255,0.15)",
   },
   modalTitle: {
-    fontFamily: 'VCR-Mono',
-    color: 'white',
+    fontFamily: "VCR-Mono",
+    color: "white",
     fontSize: 16,
-    textAlign: 'center',
+    textAlign: "center",
     marginBottom: 20,
   },
   modalLabel: {
-    fontFamily: 'VCR-Mono',
-    color: 'rgba(255,255,255,0.55)',
+    fontFamily: "VCR-Mono",
+    color: "rgba(255,255,255,0.55)",
     fontSize: 10,
     marginBottom: 6,
   },
   modalInput: {
-    fontFamily: 'VCR-Mono',
-    color: 'white',
+    fontFamily: "VCR-Mono",
+    color: "white",
     borderWidth: 1.5,
-    borderColor: 'rgba(255,255,255,0.25)',
+    borderColor: "rgba(255,255,255,0.25)",
     borderRadius: 8,
     paddingHorizontal: 10,
     height: 42,
     marginBottom: 14,
   },
   modalActions: {
-    flexDirection: 'row',
+    flexDirection: "row",
     gap: 10,
     marginTop: 4,
   },
   modalApply: {
     flex: 1,
-    backgroundColor: 'white',
+    backgroundColor: "white",
     padding: 12,
     borderRadius: 8,
-    alignItems: 'center',
+    alignItems: "center",
   },
   modalApplyText: {
-    fontFamily: 'VCR-Mono',
-    color: '#0f0f2e',
+    fontFamily: "VCR-Mono",
+    color: "#0f0f2e",
     fontSize: 13,
   },
   modalCancel: {
     flex: 1,
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.25)',
+    borderColor: "rgba(255,255,255,0.25)",
     padding: 12,
     borderRadius: 8,
-    alignItems: 'center',
+    alignItems: "center",
   },
   modalCancelText: {
-    fontFamily: 'VCR-Mono',
-    color: 'rgba(255,255,255,0.5)',
+    fontFamily: "VCR-Mono",
+    color: "rgba(255,255,255,0.5)",
     fontSize: 13,
   },
 });
