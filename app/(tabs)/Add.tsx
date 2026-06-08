@@ -1,11 +1,10 @@
-import car from "@/assets/images/car.png";
-import food from "@/assets/images/food.png";
-import money from "@/assets/images/money.png";
+const car = require("@/assets/images/car.png");
+const food = require("@/assets/images/food.png");
+const money = require("@/assets/images/money.png");
 import { useAuth } from "@/lib/authContext";
 import { insertShortcut, insertTransaction } from "@/lib/db";
 import { useNetwork } from "@/lib/networkContext";
 import { supabase } from "@/lib/supabase";
-import * as ImagePicker from "expo-image-picker";
 import { useRouter } from "expo-router";
 import { useState } from "react";
 import {
@@ -23,8 +22,10 @@ import {
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import Background from "../components/Background";
+// Lazy-load expo-image-picker to avoid createPermissionHook errors on older SDKs
+let ImagePicker: any;
 
-export default function Add() {
+function Add() {
   const router = useRouter();
   const { isLoggedIn, isGuest, userId } = useAuth();
   const { isOnline } = useNetwork();
@@ -40,42 +41,33 @@ export default function Add() {
   const [requirePhoto, setRequirePhoto] = useState(false);
   const [loading, setLoading] = useState(false);
 
-  async function requestImagePermissions(type: "camera" | "library") {
-    if (type === "camera") {
-      const { status } = await ImagePicker.requestCameraPermissionsAsync();
-      return status === "granted";
-    }
-
-    const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
-    return status === "granted";
-  }
-
   async function pickImage(fromCamera: boolean) {
-    const permissionGranted = await requestImagePermissions(
-      fromCamera ? "camera" : "library",
-    );
-    if (!permissionGranted) {
+    try {
+      // Dynamically import expo-image-picker if not already loaded
+      if (!ImagePicker) {
+        const module = await import("expo-image-picker");
+        ImagePicker = module;
+      }
+      const result = fromCamera
+        ? await ImagePicker.launchCameraAsync({
+            allowsEditing: true,
+            aspect: [4, 3],
+            quality: 0.7,
+          })
+        : await ImagePicker.launchImageLibraryAsync({
+            allowsEditing: true,
+            aspect: [4, 3],
+            quality: 0.7,
+          });
+
+      if (!result.canceled && result.assets?.length) {
+        setPhotoUri(result.assets[0].uri);
+      }
+    } catch (error) {
       Alert.alert(
-        "Permissions needed",
-        "Please allow access to your camera or photos.",
+        "Error",
+        "Failed to access camera or photos. Please check your permissions.",
       );
-      return;
-    }
-
-    const result = fromCamera
-      ? await ImagePicker.launchCameraAsync({
-          allowsEditing: true,
-          aspect: [4, 3],
-          quality: 0.7,
-        })
-      : await ImagePicker.launchImageLibraryAsync({
-          allowsEditing: true,
-          aspect: [4, 3],
-          quality: 0.7,
-        });
-
-    if (!result.canceled && result.assets?.length) {
-      setPhotoUri(result.assets[0].uri);
     }
   }
 
@@ -595,3 +587,5 @@ const styles = StyleSheet.create({
     fontSize: 11,
   },
 });
+
+export default Add;

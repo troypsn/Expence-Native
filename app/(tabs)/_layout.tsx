@@ -1,20 +1,18 @@
 import { Tabs } from "expo-router";
-import { TouchableOpacity, StyleSheet, Image, Dimensions } from "react-native";
+import { Dimensions, Image, StyleSheet } from "react-native";
 
+import add from "../../assets/images/navbarIcons/Add.png";
+import addInverse from "../../assets/images/navbarIcons/addInverse.png";
 import edit from "../../assets/images/navbarIcons/edit.png";
 import home from "../../assets/images/navbarIcons/home.png";
 import shortcuts from "../../assets/images/navbarIcons/shortcuts.png";
 import transactions from "../../assets/images/navbarIcons/transactions.png";
-import add from"../../assets/images/navbarIcons/Add.png";
-import addInverse from"../../assets/images/navbarIcons/addInverse.png";
 
-  const {width} = Dimensions.get('window');
+const { width } = Dimensions.get("window");
 
-  const TAB_BAR_WIDTH = width * 0.9;
+const TAB_BAR_WIDTH = width * 0.9;
 
 export default function TabsLayout() {
-
-
   return (
     <Tabs
       screenOptions={{
@@ -23,7 +21,6 @@ export default function TabsLayout() {
         tabBarStyle: styles.tabBar,
         animation: "shift",
       }}
-      sceneContainerStyle={{ backgroundColor: "#151269" }}
     >
       <Tabs.Screen
         name="Home"
@@ -34,7 +31,7 @@ export default function TabsLayout() {
               style={[styles.icon, focused && styles.activeIcon]}
             />
           ),
-          tabBarLabel: ()=> null,
+          tabBarLabel: () => null,
         }}
       />
 
@@ -47,7 +44,7 @@ export default function TabsLayout() {
               style={[styles.icon, focused && styles.activeIcon]}
             />
           ),
-           tabBarLabel: ()=> null,
+          tabBarLabel: () => null,
         }}
       />
 
@@ -60,7 +57,7 @@ export default function TabsLayout() {
               style={[styles.centerButton]}
             />
           ),
-           tabBarLabel: ()=> null,
+          tabBarLabel: () => null,
         }}
       />
 
@@ -73,11 +70,9 @@ export default function TabsLayout() {
               style={[styles.icon, focused && styles.activeIcon]}
             />
           ),
-           tabBarLabel: ()=> null,
+          tabBarLabel: () => null,
         }}
       />
-
-    
 
       <Tabs.Screen
         name="Edit"
@@ -88,7 +83,7 @@ export default function TabsLayout() {
               style={[styles.icon, focused && styles.activeIcon]}
             />
           ),
-           tabBarLabel: ()=> null,
+          tabBarLabel: () => null,
         }}
       />
     </Tabs>
@@ -100,10 +95,10 @@ const styles = StyleSheet.create({
     alignContent: "center",
     position: "absolute",
     bottom: 15,
-    width: '90%',
-    marginHorizontal: 'auto',
+    width: "90%",
+    marginHorizontal: "auto",
     maxWidth: 400,
-    alignSelf: 'center',
+    alignSelf: "center",
     height: 70,
     backgroundColor: "#1d1d36",
     borderRadius: 40,

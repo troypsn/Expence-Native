@@ -2,28 +2,29 @@ import { useAuth } from "@/lib/authContext";
 import { deleteShortcut, getShortcuts, insertTransaction } from "@/lib/db";
 import { useNetwork } from "@/lib/networkContext";
 import { supabase } from "@/lib/supabase";
-import * as ImagePicker from "expo-image-picker";
 import { useFocusEffect, useRouter } from "expo-router";
 import { useCallback, useEffect, useState } from "react";
 import {
-  Alert,
-  KeyboardAvoidingView,
-  LayoutAnimation,
-  Modal,
-  Platform,
-  Pressable,
-  RefreshControl,
-  ScrollView,
-  StatusBar,
-  StyleSheet,
-  Text,
-  UIManager,
-  View,
+    Alert,
+    KeyboardAvoidingView,
+    LayoutAnimation,
+    Modal,
+    Platform,
+    Pressable,
+    RefreshControl,
+    ScrollView,
+    StatusBar,
+    StyleSheet,
+    Text,
+    UIManager,
+    View,
 } from "react-native";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 import Background from "../components/Background";
 import ConfirmationModal from "../components/ConfirmationModal";
 import Transaction from "../components/Transaction";
+// Lazy-load expo-image-picker to avoid createPermissionHook errors on older SDKs
+let ImagePicker: any;
 
 function Shortcuts() {
   const router = useRouter();
