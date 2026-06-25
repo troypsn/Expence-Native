@@ -4,12 +4,12 @@ import money from "@/assets/images/money.png";
 import { Ionicons } from "@expo/vector-icons";
 import { useRef } from "react";
 import {
-    Animated,
-    Image,
-    Pressable,
-    StyleSheet,
-    Text,
-    View,
+  Animated,
+  Image,
+  Pressable,
+  StyleSheet,
+  Text,
+  View,
 } from "react-native";
 import { RectButton, Swipeable } from "react-native-gesture-handler";
 
@@ -123,10 +123,10 @@ function Transaction({
 
   const source =
     image &&
-    (image.startsWith("file://") ||
-      image.startsWith("content://") ||
-      image.startsWith("data:") ||
-      image.startsWith("http"))
+      (image.startsWith("file://") ||
+        image.startsWith("content://") ||
+        image.startsWith("data:") ||
+        image.startsWith("http"))
       ? { uri: image }
       : image === "money"
         ? money
@@ -232,6 +232,7 @@ const styles = StyleSheet.create({
     marginLeft: 5,
   },
   leftActionBase: {
+    borderRadius: 5,
     justifyContent: "center",
     alignItems: "flex-start",
     marginVertical: 5,
@@ -241,6 +242,7 @@ const styles = StyleSheet.create({
     overflow: "hidden",
   },
   leftActionContent: {
+    borderRadius: 5,
     backgroundColor: "#f59e0b", // Orange for edit
     flex: 1,
     width: "100%",
@@ -257,6 +259,7 @@ const styles = StyleSheet.create({
     overflow: "hidden",
   },
   rightActionContent: {
+    borderRadius: 5,
     backgroundColor: "#ef4444", // Red for delete
     flex: 1,
     width: "100%",

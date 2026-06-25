@@ -96,8 +96,10 @@ function Home() {
   };
 
   const handleEdit = (item: any) => {
-    // For now, just show an alert or navigate to a hypothetical edit screen
-    Alert.alert("Edit", `Edit feature for ${item.title} coming soon!`);
+    router.push({
+      pathname: "../components/EditTransaction",
+      params: { local_id: item.local_id, type: "expense" },
+    });
   };
 
   // Initial load

@@ -203,7 +203,10 @@ function Shortcuts() {
   };
 
   const handleEdit = (item: any) => {
-    Alert.alert("Edit", `Edit feature for ${item.title} coming soon!`);
+    router.push({
+      pathname: "/(tabs)/EditTransaction",
+      params: { local_id: item.local_id, type: "shortcut" },
+    });
   };
 
   useEffect(() => {

@@ -1,24 +1,31 @@
 import {
-    getPendingShortcuts,
-    getPendingTransactions,
-    markShortcutSynced,
-    markTransactionSynced,
-    upsertShortcutFromRemote,
-    upsertTransactionFromRemote,
+  getPendingShortcuts,
+  getPendingTransactions,
+  markShortcutSynced,
+  markTransactionSynced,
+  upsertShortcutFromRemote,
+  upsertTransactionFromRemote,
 } from "./db";
 import { uploadShortcutImage, uploadTransactionImage } from "./imageUpload";
 import { supabase } from "./supabase";
+
+//bucketname
+
+const supabaseBucketName = "transaction-images";
 
 /**
  * Push all locally-pending (unsynced) records to Supabase.
  * Called automatically when the device comes online and user is logged in.
  */
 export async function syncPendingData(userId: string): Promise<void> {
+  console.log("[sync] Starting syncPendingData for user:", userId);
   try {
     // ── Sync Transactions ──
     const pendingTransactions = await getPendingTransactions(userId);
+    console.log("[sync] Found pending transactions to sync:", pendingTransactions.length);
 
     for (const tx of pendingTransactions) {
+      console.log("[sync] Processing pending transaction:", tx.local_id, "title:", tx.title, "imageUri:", tx.image);
       // If the image is a local file, upload it first
       let remoteImage = tx.image;
       const isLocalTx =
@@ -27,13 +34,19 @@ export async function syncPendingData(userId: string): Promise<void> {
           tx.image.startsWith("content://") ||
           tx.image.startsWith("data:"));
       if (isLocalTx) {
+        console.log("[sync] Transaction has local image path. Initiating upload...");
         const uploaded = await uploadTransactionImage(
           userId,
           tx.image,
-          tx.local_id,
+          tx.local_id!,
         );
+        console.log("[sync] Upload result (remote image URL):", uploaded);
         if (uploaded) remoteImage = uploaded;
+      } else {
+        console.log("[sync] Transaction does not have a local image path to upload.");
       }
+
+      console.log("[sync] Inserting transaction into remote Supabase database with image path/URL:", remoteImage);
       const { data, error } = await supabase
         .from("transactions")
         .insert({
@@ -50,7 +63,7 @@ export async function syncPendingData(userId: string): Promise<void> {
       if (!error && data?.transaction_id && tx.local_id !== undefined) {
         await markTransactionSynced(tx.local_id, data.transaction_id);
         console.log(
-          "[sync] Transaction synced:",
+          "[sync] Transaction synced successfully:",
           tx.title,
           "→ remote id",
           data.transaction_id,
@@ -59,7 +72,9 @@ export async function syncPendingData(userId: string): Promise<void> {
         console.warn(
           "[sync] Failed to sync transaction:",
           tx.title,
+          "Error:",
           error.message,
+          error
         );
       }
     }
@@ -164,5 +179,26 @@ export async function fetchAndCacheFromSupabase(userId: string): Promise<void> {
     }
   } catch (err) {
     console.warn("[sync] Cache error:", err);
+  }
+}
+
+
+// upload image 
+
+
+async function uploadImage(localFilePath: string, transactionId: Number) {
+  try {
+    const { data, error } = await supabase.storage
+      .from(supabaseBucketName)
+      .upload(`${transactionId}.jpg`, localFilePath);
+
+    if (error) {
+      throw new Error("Error uploading image:", error);
+    }
+
+    return data;
+  } catch (err) {
+    console.error("Image upload error:", err);
+    return null;
   }
 }

@@ -2,22 +2,22 @@ import { useAuth } from "@/lib/authContext";
 import { deleteTransaction, getDb } from "@/lib/db";
 import { useNetwork } from "@/lib/networkContext";
 import { supabase } from "@/lib/supabase";
-import { useFocusEffect } from "expo-router";
+import { router, useFocusEffect } from "expo-router";
 import { useCallback, useState } from "react";
 import {
-    Alert,
-    LayoutAnimation,
-    Modal,
-    Platform,
-    Pressable,
-    RefreshControl,
-    ScrollView,
-    StatusBar,
-    StyleSheet,
-    Text,
-    TextInput,
-    UIManager,
-    View
+  Alert,
+  LayoutAnimation,
+  Modal,
+  Platform,
+  Pressable,
+  RefreshControl,
+  ScrollView,
+  StatusBar,
+  StyleSheet,
+  Text,
+  TextInput,
+  UIManager,
+  View
 } from "react-native";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 import Background from "../components/Background";
@@ -160,7 +160,10 @@ export default function Transactions() {
   };
 
   const handleEdit = (item: any) => {
-    Alert.alert("Edit", `Edit feature for ${item.title} coming soon!`);
+    router.push({
+      pathname: "../components/EditTransaction",
+      params: { local_id: item.local_id, type: "expense" },
+    });
   };
 
   useFocusEffect(

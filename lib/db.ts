@@ -1,4 +1,5 @@
 import * as SQLite from "expo-sqlite";
+import { supabase } from "./supabase";
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -465,4 +466,25 @@ export function getDateRange(filterType: string): {
   }
 
   return { startDate, endDate };
+}
+
+// ─── OCR ──────────────────────────────────────────────────────────────────────
+
+export async function decrementOcrUsageRemote(userId: string): Promise<void> {
+  try {
+    const { data } = await supabase
+      .from('profiles')
+      .select('ocr_scans_remaining, is_premium')
+      .eq('id', userId)
+      .single();
+      
+    if (data && !data.is_premium && data.ocr_scans_remaining > 0) {
+      await supabase
+        .from('profiles')
+        .update({ ocr_scans_remaining: data.ocr_scans_remaining - 1 })
+        .eq('id', userId);
+    }
+  } catch (error) {
+    console.warn('[db] Failed to decrement OCR usage remotely:', error);
+  }
 }

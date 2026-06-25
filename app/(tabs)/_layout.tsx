@@ -86,6 +86,13 @@ export default function TabsLayout() {
           tabBarLabel: () => null,
         }}
       />
+
+      <Tabs.Screen
+        name="EditTransaction"
+        options={{
+          tabBarButton: () => null,
+        }}
+      />
     </Tabs>
   );
 }

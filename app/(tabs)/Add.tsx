@@ -2,12 +2,15 @@ const car = require("@/assets/images/car.png");
 const food = require("@/assets/images/food.png");
 const money = require("@/assets/images/money.png");
 import { useAuth } from "@/lib/authContext";
-import { insertShortcut, insertTransaction } from "@/lib/db";
+import { insertShortcut, insertTransaction, decrementOcrUsageRemote } from "@/lib/db";
 import { useNetwork } from "@/lib/networkContext";
 import { supabase } from "@/lib/supabase";
 import { useRouter } from "expo-router";
 import { useState } from "react";
+import { FontAwesome5 } from '@expo/vector-icons';
+import { extractReceiptData } from "@/lib/ocr";
 import {
+  ActivityIndicator,
   Alert,
   Image,
   KeyboardAvoidingView,
@@ -27,7 +30,7 @@ let ImagePicker: any;
 
 function Add() {
   const router = useRouter();
-  const { isLoggedIn, isGuest, userId } = useAuth();
+  const { isLoggedIn, isGuest, userId, isPremium, ocrScansRemaining, decrementOcrScanLocally } = useAuth();
   const { isOnline } = useNetwork();
 
   const [icon, setIcon] = useState("money");
@@ -40,6 +43,51 @@ function Add() {
   const [photoUri, setPhotoUri] = useState<string | null>(null);
   const [requirePhoto, setRequirePhoto] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [isScanning, setIsScanning] = useState(false);
+
+
+  async function handleScanReceipt() {
+    if (!isPremium && typeof ocrScansRemaining === 'number' && ocrScansRemaining <= 0) {
+      Alert.alert('Limit Reached', 'You have used all your free OCR scans for this month. Upgrade to Premium for unlimited scans.');
+      return;
+    }
+
+    try {
+      if (!ImagePicker) {
+        const module = await import("expo-image-picker");
+        ImagePicker = module;
+      }
+      const result = await ImagePicker.launchCameraAsync({
+        allowsEditing: true,
+        quality: 0.7,
+      });
+
+      if (!result.canceled && result.assets?.length) {
+        setIsScanning(true);
+        const { title, amount } = await extractReceiptData(result.assets[0].uri);
+
+        if (title || amount) {
+          setExpenseDetails(prev => ({
+            ...prev,
+            title: title || prev.title,
+            amount: amount || prev.amount
+          }));
+          Alert.alert('Scan Success', 'Extracted details from receipt.');
+        } else {
+          Alert.alert('Scan Failed', 'Could not read text from receipt clearly.');
+        }
+
+        if (userId && !isGuest && !isPremium) {
+          decrementOcrScanLocally();
+          decrementOcrUsageRemote(userId);
+        }
+      }
+    } catch (error) {
+      Alert.alert("Error", "Failed to access camera or scan receipt.");
+    } finally {
+      setIsScanning(false);
+    }
+  }
 
   async function pickImage(fromCamera: boolean) {
     try {
@@ -50,15 +98,15 @@ function Add() {
       }
       const result = fromCamera
         ? await ImagePicker.launchCameraAsync({
-            allowsEditing: true,
-            aspect: [4, 3],
-            quality: 0.7,
-          })
+          allowsEditing: true,
+          aspect: [1, 1],
+          quality: 0.7,
+        })
         : await ImagePicker.launchImageLibraryAsync({
-            allowsEditing: true,
-            aspect: [4, 3],
-            quality: 0.7,
-          });
+          allowsEditing: true,
+          aspect: [1, 1],
+          quality: 0.7,
+        });
 
       if (!result.canceled && result.assets?.length) {
         setPhotoUri(result.assets[0].uri);
@@ -104,16 +152,11 @@ function Add() {
 
     setLoading(true);
     const now = new Date().toISOString();
-
     const selectedImage = photoUri ?? icon;
-    const isLocalPhoto =
-      selectedImage?.startsWith("file://") ||
-      selectedImage?.startsWith("content://") ||
-      selectedImage?.startsWith("data:");
 
     if (addType === "expense") {
       // ─── Save expense to local SQLite first (always) ───
-      const localId = await insertTransaction({
+      await insertTransaction({
         remote_id: null,
         user_id: isLoggedIn ? userId : null,
         title,
@@ -124,36 +167,9 @@ function Add() {
         synced: 0,
         is_guest: isGuest ? 1 : 0,
       });
-
-      // ─── Background Sync to Supabase for icon-only transactions ───
-      if (!isLocalPhoto && isLoggedIn && isOnline && userId) {
-        (async () => {
-          try {
-            const { data, error } = await supabase
-              .from("transactions")
-              .insert({
-                user_id: userId,
-                title,
-                amount: parseFloat(amount),
-                image: selectedImage,
-                description,
-                created_at: now,
-              })
-              .select("transaction_id")
-              .single();
-
-            if (!error && data?.transaction_id) {
-              const { markTransactionSynced } = await import("@/lib/db");
-              await markTransactionSynced(localId, data.transaction_id);
-            }
-          } catch (e) {
-            console.warn("[add] Background sync failed:", e);
-          }
-        })();
-      }
     } else {
       // ─── Shortcut (only for logged-in users) ───
-      const localId = await insertShortcut({
+      await insertShortcut({
         remote_id: null,
         user_id: userId,
         title,
@@ -165,33 +181,18 @@ function Add() {
         is_guest: 0,
         require_photo: requirePhoto ? 1 : 0,
       });
+    }
 
-      // ─── Background Sync to Supabase for icon-only shortcuts ───
-      if (!isLocalPhoto && isOnline && userId) {
-        (async () => {
-          try {
-            const { data, error } = await supabase
-              .from("shortcuts")
-              .insert({
-                user_id: userId,
-                title,
-                amount: parseFloat(amount),
-                image: selectedImage,
-                description,
-                created_at: now,
-              })
-              .select("shortcut_id")
-              .single();
-
-            if (!error && data?.shortcut_id) {
-              const { markShortcutSynced } = await import("@/lib/db");
-              await markShortcutSynced(localId, data.shortcut_id);
-            }
-          } catch (e) {
-            console.warn("[add] Background sync failed:", e);
-          }
-        })();
-      }
+    // ─── Trigger Sync to Supabase ───
+    if (isLoggedIn && isOnline && userId) {
+      (async () => {
+        try {
+          const { syncPendingData } = await import("@/lib/sync");
+          await syncPendingData(userId);
+        } catch (e) {
+          console.warn("[add] Background sync failed:", e);
+        }
+      })();
     }
 
     // ─── Immediate Feedback ───
@@ -219,7 +220,21 @@ function Add() {
             showsVerticalScrollIndicator={false}
             keyboardShouldPersistTaps="handled"
           >
-            <Text style={styles.title}>Add</Text>
+            <View style={styles.headerContainer}>
+              <Text style={styles.title}>Add</Text>
+              <Pressable style={styles.cameraIconContainer} onPress={handleScanReceipt} disabled={isScanning}>
+                {isScanning ? (
+                  <ActivityIndicator color="white" size="small" />
+                ) : (
+                  <>
+                    <FontAwesome5 name="camera" size={20} color="white" />
+                    <Text style={styles.cameraUsesText}>
+                      {isPremium ? '∞' : `${ocrScansRemaining}/5`}
+                    </Text>
+                  </>
+                )}
+              </Pressable>
+            </View>
 
             <View style={styles.inputContainer}>
               <Text style={styles.label}>Select Type</Text>
@@ -486,7 +501,27 @@ const styles = StyleSheet.create({
     fontFamily: "VCR-Mono",
     color: "white",
     fontSize: 28,
+  },
+  headerContainer: {
+    width: "70%",
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
     marginBottom: 20,
+  },
+  cameraIconContainer: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "rgba(255,255,255,0.1)",
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 20,
+    gap: 8,
+  },
+  cameraUsesText: {
+    fontFamily: "VCR-Mono",
+    color: "white",
+    fontSize: 14,
   },
   addButton: {
     backgroundColor: "white",
