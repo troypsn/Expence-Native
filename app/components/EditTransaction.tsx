@@ -23,7 +23,7 @@ import {
   View,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
-import Background from "../components/Background";
+import Background from "./Background";
 
 const car = require("@/assets/images/car.png");
 const food = require("@/assets/images/food.png");
@@ -110,15 +110,13 @@ export default function EditTransaction() {
       }
       const result = fromCamera
         ? await ImagePicker.launchCameraAsync({
-            allowsEditing: true,
-            aspect: [4, 3],
-            quality: 0.7,
-          })
+          allowsEditing: true,
+          quality: 0.4,
+        })
         : await ImagePicker.launchImageLibraryAsync({
-            allowsEditing: true,
-            aspect: [4, 3],
-            quality: 0.7,
-          });
+          allowsEditing: true,
+          quality: 0.4,
+        });
 
       if (!result.canceled && result.assets?.length) {
         setPhotoUri(result.assets[0].uri);

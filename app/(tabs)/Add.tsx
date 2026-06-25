@@ -99,13 +99,11 @@ function Add() {
       const result = fromCamera
         ? await ImagePicker.launchCameraAsync({
           allowsEditing: true,
-          aspect: [1, 1],
-          quality: 0.7,
+          quality: 0.4,
         })
         : await ImagePicker.launchImageLibraryAsync({
           allowsEditing: true,
-          aspect: [1, 1],
-          quality: 0.7,
+          quality: 0.4,
         });
 
       if (!result.canceled && result.assets?.length) {

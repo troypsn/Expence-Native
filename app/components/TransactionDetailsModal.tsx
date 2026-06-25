@@ -1,4 +1,4 @@
-import React from "react";
+import { useState } from "react";
 import { Image, Modal, Pressable, StyleSheet, Text, View } from "react-native";
 
 type TransactionDetails = {
@@ -8,6 +8,7 @@ type TransactionDetails = {
   description: string;
   created_at: string;
 };
+
 
 type Props = {
   visible: boolean;
@@ -31,12 +32,13 @@ const formatDate = (timestamp: string) => {
 };
 
 const TransactionDetailsModal = ({ visible, transaction, onClose }: Props) => {
+  const [imageViewerVisible, setImageViewerVisible] = useState(false);
   const imageSource =
     transaction?.image &&
-    (transaction.image.startsWith("file://") ||
-      transaction.image.startsWith("content://") ||
-      transaction.image.startsWith("data:") ||
-      transaction.image.startsWith("http"))
+      (transaction.image.startsWith("file://") ||
+        transaction.image.startsWith("content://") ||
+        transaction.image.startsWith("data:") ||
+        transaction.image.startsWith("http"))
       ? { uri: transaction.image }
       : null;
 
@@ -50,10 +52,39 @@ const TransactionDetailsModal = ({ visible, transaction, onClose }: Props) => {
       <View style={styles.overlay}>
         <View style={styles.card}>
           <Text style={styles.title}>Transaction details</Text>
-          {imageSource ? (
-            <Image source={imageSource} style={styles.detailImage} />
-          ) : null}
+          <View style={styles.card}>
+            {imageSource ? (
+              <Pressable onPress={() => setImageViewerVisible(true)}>
+                <Image
+                  source={imageSource}
+                  style={styles.detailImage}
+                />
+              </Pressable>
+            ) : null}
 
+            <Modal
+              visible={imageViewerVisible}
+              transparent
+              animationType="fade"
+              onRequestClose={() => setImageViewerVisible(false)}
+            >
+              <Pressable
+                style={styles.modalBackground}
+                onPress={() => setImageViewerVisible(false)}
+              >
+                {imageSource && (
+                  <Image
+                    source={imageSource}
+                    style={styles.fullImage}
+                    resizeMode="contain"
+                  />
+                )}
+              </Pressable>
+            </Modal>
+
+            {/* rest of fields */}
+
+          </View>
           <View style={styles.field}>
             <Text style={styles.label}>Title</Text>
             <Text style={styles.value}>{transaction?.title ?? "Unknown"}</Text>
@@ -156,6 +187,17 @@ const styles = StyleSheet.create({
     borderRadius: 14,
     marginBottom: 16,
     resizeMode: "cover",
+  },
+  modalBackground: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.85)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+
+  fullImage: {
+    width: '95%',
+    height: '80%',
   },
 });
 
