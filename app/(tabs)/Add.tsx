@@ -1,6 +1,9 @@
 const car = require("@/assets/images/car.png");
 const food = require("@/assets/images/food.png");
 const money = require("@/assets/images/money.png");
+import DateTimePicker, {
+  DateTimePickerEvent,
+} from "@react-native-community/datetimepicker";
 import { useAuth } from "@/lib/authContext";
 import { insertShortcut, insertTransaction, decrementOcrUsageRemote } from "@/lib/db";
 import { useNetwork } from "@/lib/networkContext";
@@ -35,15 +38,20 @@ function Add() {
 
   const [icon, setIcon] = useState("money");
   const [type, setType] = useState("expense");
+  const [transactionDate, setTransactionDate] = useState(new Date());
   const [expenseDetails, setExpenseDetails] = useState({
     title: "",
     amount: "",
     description: "",
+    date: "",
   });
   const [photoUri, setPhotoUri] = useState<string | null>(null);
   const [requirePhoto, setRequirePhoto] = useState(false);
   const [loading, setLoading] = useState(false);
   const [isScanning, setIsScanning] = useState(false);
+  const [showDatePicker, setShowDatePicker] = useState(false);
+  const [showTimePicker, setShowTimePicker] = useState(false);
+  const [isDateAdjusted, setIsDateAdjusted] = useState(false);
 
 
   async function handleScanReceipt() {
@@ -89,9 +97,10 @@ function Add() {
     }
   }
 
+
   async function pickImage(fromCamera: boolean) {
     try {
-      // Dynamically import expo-image-picker if not already loaded
+
       if (!ImagePicker) {
         const module = await import("expo-image-picker");
         ImagePicker = module;
@@ -149,7 +158,7 @@ function Add() {
     }
 
     setLoading(true);
-    const now = new Date().toISOString();
+    const dateToSave = isDateAdjusted ? transactionDate.toISOString() : new Date().toISOString();
     const selectedImage = photoUri ?? icon;
 
     if (addType === "expense") {
@@ -161,7 +170,7 @@ function Add() {
         amount: parseFloat(amount),
         image: selectedImage,
         description,
-        created_at: now,
+        created_at: dateToSave,
         synced: 0,
         is_guest: isGuest ? 1 : 0,
       });
@@ -174,7 +183,7 @@ function Add() {
         amount: parseFloat(amount),
         image: selectedImage,
         description,
-        created_at: now,
+        created_at: dateToSave,
         synced: 0,
         is_guest: 0,
         require_photo: requirePhoto ? 1 : 0,
@@ -194,7 +203,7 @@ function Add() {
     }
 
     // ─── Immediate Feedback ───
-    setExpenseDetails({ title: "", amount: "", description: "" });
+    setExpenseDetails({ title: "", amount: "", description: "", date: "" });
     setPhotoUri(null);
     setRequirePhoto(false);
     setLoading(false);
@@ -204,6 +213,8 @@ function Add() {
     );
     router.replace("/(tabs)/Home");
   }
+
+  // Removed unused onChangeDate function
 
   return (
     <Background>
@@ -335,6 +346,69 @@ function Add() {
             </View>
 
             <View style={styles.inputContainer}>
+              <Text style={styles.label}>Date and Time</Text>
+              <View style={styles.dateAndTimeContainer}>
+                <Pressable
+                  style={styles.dateButton}
+                  onPress={() => setShowDatePicker(true)}
+                >
+                  <Text style={styles.dateText}>
+                    {transactionDate.toLocaleDateString()}
+                  </Text>
+                </Pressable>
+                <Pressable
+                  style={styles.timeButton}
+                  onPress={() => setShowTimePicker(true)}
+                >
+                  <Text style={styles.dateText}>
+                    {transactionDate.toLocaleTimeString([], {
+                      hour: "2-digit",
+                      minute: "2-digit",
+                    })}
+                  </Text>
+                </Pressable>
+              </View>
+              {showDatePicker && (
+                <DateTimePicker
+                  value={transactionDate}
+                  mode="date"
+                  display="default"
+                  onChange={(event, selectedDate) => {
+                    setShowDatePicker(false);
+                    if (selectedDate) {
+                      const updated = new Date(transactionDate);
+                      updated.setFullYear(selectedDate.getFullYear());
+                      updated.setMonth(selectedDate.getMonth());
+                      updated.setDate(selectedDate.getDate());
+                      setTransactionDate(updated);
+                      setIsDateAdjusted(true);
+                    }
+                  }}
+                />
+              )}
+              {showTimePicker && (
+                <DateTimePicker
+                  value={transactionDate}
+                  mode="time"
+                  display="default"
+                  onChange={(event, selectedTime) => {
+                    setShowTimePicker(false);
+                    if (selectedTime) {
+                      const updated = new Date(transactionDate);
+                      updated.setHours(selectedTime.getHours());
+                      updated.setMinutes(selectedTime.getMinutes());
+                      updated.setSeconds(selectedTime.getSeconds());
+                      setTransactionDate(updated);
+                      setIsDateAdjusted(true);
+                    }
+                  }}
+                />
+              )}
+            </View>
+
+
+
+            <View style={styles.inputContainer}>
               <Text style={styles.label}>Description</Text>
               <TextInput
                 placeholder="Enter Expense Description"
@@ -440,6 +514,16 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     width: "70%",
     marginBottom: 16,
+  },
+  dateAndTimeContainer: {
+    gap: '5%',
+    display: 'flex',
+    flexDirection: 'row',
+    padding: 0,
+    alignItems: "center",
+    justifyContent: "space-between",
+    width: "100%",
+    marginBottom: 5,
   },
   pickIcon: {
     marginTop: 8,
@@ -619,6 +703,32 @@ const styles = StyleSheet.create({
     color: "rgba(255, 200, 0, 0.9)",
     fontSize: 11,
   },
+  dateButton: {
+    textAlign: 'center',
+    justifyContent: 'center',
+    width: '60%',
+    height: 45,
+    borderWidth: 1.5,
+    marginTop: 8,
+    borderColor: "white",
+    paddingHorizontal: 10,
+    borderRadius: 10,
+  },
+  timeButton: {
+    textAlign: 'center',
+    justifyContent: 'center',
+    width: '40%',
+    height: 45,
+    borderWidth: 1.5,
+    marginTop: 8,
+    borderColor: "white",
+    paddingHorizontal: 10,
+    borderRadius: 10,
+  },
+  dateText: {
+    fontFamily: "VCR-Mono",
+    color: 'white',
+  }
 });
 
 export default Add;

@@ -27,6 +27,8 @@ import TransactionDetailsModal from "../components/TransactionDetailsModal";
 
 type LocalTransaction = {
   local_id: number;
+  remote_id?: number | null;
+  user_id?: string | null;
   title: string;
   amount: number;
   image: string;

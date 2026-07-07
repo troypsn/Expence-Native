@@ -52,39 +52,44 @@ const TransactionDetailsModal = ({ visible, transaction, onClose }: Props) => {
       <View style={styles.overlay}>
         <View style={styles.card}>
           <Text style={styles.title}>Transaction details</Text>
-          <View style={styles.card}>
-            {imageSource ? (
+
+          {imageSource && transaction?.image ? (
+            <View style={styles.card}>
+
+
               <Pressable onPress={() => setImageViewerVisible(true)}>
                 <Image
                   source={imageSource}
                   style={styles.detailImage}
                 />
               </Pressable>
-            ) : null}
 
-            <Modal
-              visible={imageViewerVisible}
-              transparent
-              animationType="fade"
-              onRequestClose={() => setImageViewerVisible(false)}
-            >
-              <Pressable
-                style={styles.modalBackground}
-                onPress={() => setImageViewerVisible(false)}
+
+              <Modal
+                visible={imageViewerVisible}
+                transparent
+                animationType="fade"
+                onRequestClose={() => setImageViewerVisible(false)}
               >
-                {imageSource && (
-                  <Image
-                    source={imageSource}
-                    style={styles.fullImage}
-                    resizeMode="contain"
-                  />
-                )}
-              </Pressable>
-            </Modal>
+                <Pressable
+                  style={styles.modalBackground}
+                  onPress={() => setImageViewerVisible(false)}
+                >
+                  {imageSource && (
+                    <Image
+                      source={imageSource}
+                      style={styles.fullImage}
+                      resizeMode="contain"
+                    />
+                  )}
+                </Pressable>
+              </Modal>
 
-            {/* rest of fields */}
+            </View>
 
-          </View>
+          ) : null}
+
+
           <View style={styles.field}>
             <Text style={styles.label}>Title</Text>
             <Text style={styles.value}>{transaction?.title ?? "Unknown"}</Text>
@@ -153,6 +158,7 @@ const styles = StyleSheet.create({
     marginBottom: 20,
   },
   label: {
+    marginTop: 10,
     fontFamily: "VCR-Mono",
     color: "rgba(255,255,255,0.55)",
     fontSize: 10,
