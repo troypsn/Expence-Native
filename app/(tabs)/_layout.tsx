@@ -75,7 +75,7 @@ export default function TabsLayout() {
       />
 
       <Tabs.Screen
-        name="Edit"
+        name="Settings"
         options={{
           tabBarIcon: ({ focused }) => (
             <Image

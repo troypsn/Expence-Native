@@ -3,21 +3,21 @@ import { deleteShortcut, getShortcuts, insertTransaction } from "@/lib/db";
 import { useNetwork } from "@/lib/networkContext";
 import { supabase } from "@/lib/supabase";
 import { useFocusEffect, useRouter } from "expo-router";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
-    Alert,
-    KeyboardAvoidingView,
-    LayoutAnimation,
-    Modal,
-    Platform,
-    Pressable,
-    RefreshControl,
-    ScrollView,
-    StatusBar,
-    StyleSheet,
-    Text,
-    UIManager,
-    View,
+  Alert,
+  KeyboardAvoidingView,
+  LayoutAnimation,
+  Modal,
+  Platform,
+  Pressable,
+  RefreshControl,
+  ScrollView,
+  StatusBar,
+  StyleSheet,
+  Text,
+  UIManager,
+  View,
 } from "react-native";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 import Background from "../components/Background";
@@ -37,6 +37,8 @@ function Shortcuts() {
   const [showLoginModal, setShowLoginModal] = useState(false);
   const [itemToDelete, setItemToDelete] = useState<number | null>(null);
   const [loading, setLoading] = useState(false);
+
+  const openSwipeableRef = useRef<(() => void) | null>(null);
 
   const addTransactionFromShortcut = async (item: any, photoUri?: string) => {
     const now = new Date().toISOString();
@@ -117,24 +119,23 @@ function Shortcuts() {
 
   const handleUseShortcut = async (item: any) => {
     if (loading) return;
-    setLoading(true);
 
+    if (item.require_photo === 1) {
+      router.push({
+        pathname: "/(tabs)/Add",
+        params: {
+          shortcut_title: item.title,
+          shortcut_amount: String(item.amount),
+          shortcut_description: item.description || "",
+          shortcut_image: item.image || "",
+          trigger_photo: "true",
+        },
+      });
+      return;
+    }
+
+    setLoading(true);
     try {
-      if (item.require_photo === 1) {
-        Alert.alert(
-          "Photo Required",
-          "This shortcut requires a photo. Take one now?",
-          [
-            {
-              text: "Cancel",
-              style: "cancel",
-              onPress: () => setLoading(false),
-            },
-            { text: "Take Photo", onPress: () => takePhotoForShortcut(item) },
-          ],
-        );
-        return;
-      }
 
       await addTransactionFromShortcut(item);
     } catch (e) {
@@ -204,7 +205,7 @@ function Shortcuts() {
 
   const handleEdit = (item: any) => {
     router.push({
-      pathname: "/(tabs)/EditTransaction",
+      pathname: "../components/EditTransaction",
       params: { local_id: item.local_id, type: "shortcut" },
     });
   };
@@ -216,6 +217,13 @@ function Shortcuts() {
   useFocusEffect(
     useCallback(() => {
       loadShortcuts(sortAscending).then(setItems);
+      return () => {
+        // Close any open swipeable and reset ref when leaving this tab
+        if (openSwipeableRef.current) {
+          openSwipeableRef.current();
+          openSwipeableRef.current = null;
+        }
+      };
     }, [userId, isLoggedIn, sortAscending]),
   );
 
@@ -264,6 +272,12 @@ function Shortcuts() {
                     onDelete={() => setItemToDelete(item.local_id)}
                     onEdit={() => handleEdit(item)}
                     onPress={() => handleUseShortcut(item)}
+                    onSwipeStart={(close) => {
+                      if (openSwipeableRef.current && openSwipeableRef.current !== close) {
+                        openSwipeableRef.current();
+                      }
+                      openSwipeableRef.current = close;
+                    }}
                   />
                 ))}
                 <View

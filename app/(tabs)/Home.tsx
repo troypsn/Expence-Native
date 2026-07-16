@@ -3,7 +3,7 @@ import { deleteTransaction, getTransactions } from "@/lib/db";
 import { useNetwork } from "@/lib/networkContext";
 import { supabase } from "@/lib/supabase";
 import { useFocusEffect, useRouter } from "expo-router";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
   Alert,
   KeyboardAvoidingView,
@@ -39,6 +39,8 @@ function Home() {
     null,
   );
   const [refreshTrigger, setRefreshTrigger] = useState(0);
+
+  const openSwipeableRef = useRef<(() => void) | null>(null);
 
   const loadItems = useCallback(
     async (filterType: string = "TODAY", ascending: boolean = false) => {
@@ -117,6 +119,13 @@ function Home() {
         setItems(rows);
         setRefreshTrigger((prev) => prev + 1);
       });
+      return () => {
+        // Close any open swipeable and reset ref when leaving this tab
+        if (openSwipeableRef.current) {
+          openSwipeableRef.current();
+          openSwipeableRef.current = null;
+        }
+      };
     }, [userId, isGuest, selectedFilter, sortAscending]),
   );
 
@@ -152,7 +161,7 @@ function Home() {
                 onPress={() => router.push("/auth/Login")}
               >
                 <Text style={styles.guestBannerText}>
-                  👻 Guest mode — TAP TO LOGIN & SYNC
+                  Guest mode — TAP TO LOGIN & SYNC
                 </Text>
               </Pressable>
             )}
@@ -195,6 +204,12 @@ function Home() {
                       onPress={() => setSelectedTransaction(item)}
                       onDelete={() => setItemToDelete(item.local_id)}
                       onEdit={() => handleEdit(item)}
+                      onSwipeStart={(close) => {
+                        if (openSwipeableRef.current && openSwipeableRef.current !== close) {
+                          openSwipeableRef.current();
+                        }
+                        openSwipeableRef.current = close;
+                      }}
                     />
                   ))
                 )}

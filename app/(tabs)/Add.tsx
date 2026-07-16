@@ -8,8 +8,8 @@ import { useAuth } from "@/lib/authContext";
 import { insertShortcut, insertTransaction, decrementOcrUsageRemote } from "@/lib/db";
 import { useNetwork } from "@/lib/networkContext";
 import { supabase } from "@/lib/supabase";
-import { useRouter } from "expo-router";
-import { useState } from "react";
+import { useRouter, useLocalSearchParams } from "expo-router";
+import { useEffect, useState } from "react";
 import { FontAwesome5 } from '@expo/vector-icons';
 import { extractReceiptData } from "@/lib/ocr";
 import {
@@ -33,6 +33,13 @@ let ImagePicker: any;
 
 function Add() {
   const router = useRouter();
+  const params = useLocalSearchParams<{
+    shortcut_title?: string;
+    shortcut_amount?: string;
+    shortcut_description?: string;
+    shortcut_image?: string;
+    trigger_photo?: string;
+  }>();
   const { isLoggedIn, isGuest, userId, isPremium, ocrScansRemaining, decrementOcrScanLocally } = useAuth();
   const { isOnline } = useNetwork();
 
@@ -52,6 +59,43 @@ function Add() {
   const [showDatePicker, setShowDatePicker] = useState(false);
   const [showTimePicker, setShowTimePicker] = useState(false);
   const [isDateAdjusted, setIsDateAdjusted] = useState(false);
+
+  // Prefill from shortcut navigation params and auto-trigger photo picker
+  useEffect(() => {
+    if (params.shortcut_title) {
+      setExpenseDetails({
+        title: params.shortcut_title || "",
+        amount: params.shortcut_amount || "",
+        description: params.shortcut_description || "",
+        date: "",
+      });
+
+      if (params.shortcut_image) {
+        const img = params.shortcut_image;
+        if (img === "money" || img === "car" || img === "food") {
+          setIcon(img);
+          setPhotoUri(null);
+        } else {
+          setPhotoUri(img);
+        }
+      }
+
+      if (params.trigger_photo === "true") {
+        setTimeout(() => {
+          openPhotoPicker();
+        }, 400);
+      }
+
+      // Clear params so they don't re-trigger
+      router.setParams({
+        shortcut_title: undefined,
+        shortcut_amount: undefined,
+        shortcut_description: undefined,
+        shortcut_image: undefined,
+        trigger_photo: undefined,
+      } as any);
+    }
+  }, [params.shortcut_title]);
 
 
   async function handleScanReceipt() {

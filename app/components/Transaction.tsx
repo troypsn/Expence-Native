@@ -36,6 +36,7 @@ type TransactionProps = {
   onEdit?: () => void;
   onDelete?: () => void;
   onPress?: () => void;
+  onSwipeStart?: (close: () => void) => void;
 };
 
 function Transaction({
@@ -46,11 +47,15 @@ function Transaction({
   onEdit,
   onDelete,
   onPress,
+  onSwipeStart,
 }: TransactionProps) {
   const actionOpacity = useRef(new Animated.Value(0)).current;
   const swipeableRef = useRef<Swipeable>(null);
 
   const handleSwipeWillOpen = () => {
+    if (onSwipeStart) {
+      onSwipeStart(() => swipeableRef.current?.close());
+    }
     Animated.timing(actionOpacity, {
       toValue: 1,
       duration: 150,

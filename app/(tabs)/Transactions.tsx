@@ -3,7 +3,7 @@ import { deleteTransaction, getDb } from "@/lib/db";
 import { useNetwork } from "@/lib/networkContext";
 import { supabase } from "@/lib/supabase";
 import { router, useFocusEffect } from "expo-router";
-import { useCallback, useState } from "react";
+import { useCallback, useRef, useState } from "react";
 import {
   Alert,
   LayoutAnimation,
@@ -105,6 +105,9 @@ export default function Transactions() {
   const [sortAscending, setSortAscending] = useState(false);
   const [itemToDelete, setItemToDelete] = useState<number | null>(null);
 
+  // Ref to track currently open swipeable transaction
+  const openSwipeableRef = useRef<(() => void) | null>(null);
+
   // Load everything from SQLite
   const loadAll = useCallback(async () => {
     const db = await getDb();
@@ -171,6 +174,13 @@ export default function Transactions() {
   useFocusEffect(
     useCallback(() => {
       loadAll();
+      return () => {
+        // Close any open swipeable and reset ref when leaving this tab
+        if (openSwipeableRef.current) {
+          openSwipeableRef.current();
+          openSwipeableRef.current = null;
+        }
+      };
     }, [loadAll]),
   );
   // ... existing filter logic ...
@@ -328,6 +338,12 @@ export default function Transactions() {
                   onPress={() => setSelectedTransaction(item)}
                   onDelete={() => setItemToDelete(item.local_id)}
                   onEdit={() => handleEdit(item)}
+                  onSwipeStart={(close) => {
+                    if (openSwipeableRef.current && openSwipeableRef.current !== close) {
+                      openSwipeableRef.current();
+                    }
+                    openSwipeableRef.current = close;
+                  }}
                 />
               ))
             )}

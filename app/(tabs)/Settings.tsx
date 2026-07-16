@@ -27,7 +27,7 @@ import trashcanIcon from "@/assets/images/trashcan.png";
 
 import { supabase } from "@/lib/supabase";
 
-function Edit() {
+function Settings() {
   const router = useRouter();
   const { isLoggedIn, isGuest, userId, logout } = useAuth();
   const { isOnline } = useNetwork();
@@ -515,4 +515,4 @@ const styles = StyleSheet.create({
   },
 });
 
-export default Edit;
+export default Settings;

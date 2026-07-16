@@ -54,7 +54,7 @@ const TransactionDetailsModal = ({ visible, transaction, onClose }: Props) => {
           <Text style={styles.title}>Transaction details</Text>
 
           {imageSource && transaction?.image ? (
-            <View style={styles.card}>
+            <View style={styles.imageCard}>
 
 
               <Pressable onPress={() => setImageViewerVisible(true)}>
@@ -103,7 +103,7 @@ const TransactionDetailsModal = ({ visible, transaction, onClose }: Props) => {
           </View>
 
           <View style={styles.field}>
-            <Text style={styles.label}>Date</Text>
+            <Text style={styles.label}>Date And Time</Text>
             <Text style={styles.value}>
               {transaction ? formatDate(transaction.created_at) : "-"}
             </Text>
@@ -143,6 +143,15 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: "rgba(255,255,255,0.15)",
     padding: 22,
+  },
+  imageCard: {
+    padding: 5,
+    width: "100%",
+    maxWidth: 320,
+    backgroundColor: "#1d1d36",
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.15)",
   },
   title: {
     fontFamily: "VCR-Mono",
@@ -191,7 +200,6 @@ const styles = StyleSheet.create({
     width: "100%",
     height: 170,
     borderRadius: 14,
-    marginBottom: 16,
     resizeMode: "cover",
   },
   modalBackground: {
