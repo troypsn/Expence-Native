@@ -1,46 +1,195 @@
+const car = require("@/assets/images/car.png");
+const food = require("@/assets/images/food.png");
+const money = require("@/assets/images/money.png");
+import DateTimePicker, {
+  DateTimePickerEvent,
+} from "@react-native-community/datetimepicker";
+import { useAuth } from "@/lib/authContext";
+import { insertShortcut, insertTransaction, decrementOcrUsageRemote } from "@/lib/db";
+import { useNetwork } from "@/lib/networkContext";
+import { supabase } from "@/lib/supabase";
+import { useRouter, useLocalSearchParams } from "expo-router";
+import { useEffect, useState } from "react";
+import { FontAwesome5 } from '@expo/vector-icons';
+import { extractReceiptData } from "@/lib/ocr";
 import {
-  View, Text, StyleSheet, StatusBar, TextInput, Platform,
-  KeyboardAvoidingView, Pressable, Alert, ActivityIndicator, Keyboard, Image, ScrollView
-} from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
-import { useState, useEffect } from 'react';
-import Background from '../components/Background';
-import { supabase } from '@/lib/supabase';
-import { useRouter } from 'expo-router';
-import { useAuth } from '@/lib/authContext';
-import { useNetwork } from '@/lib/networkContext';
-import { insertTransaction, insertShortcut } from '@/lib/db';
-import money from '@/assets/images/money.png';
-import car from '@/assets/images/car.png';
-import food from '@/assets/images/food.png';
+  ActivityIndicator,
+  Alert,
+  Image,
+  KeyboardAvoidingView,
+  Platform,
+  Pressable,
+  ScrollView,
+  StatusBar,
+  StyleSheet,
+  Text,
+  TextInput,
+  View,
+} from "react-native";
+import { SafeAreaView } from "react-native-safe-area-context";
+import Background from "../components/Background";
+// Lazy-load expo-image-picker to avoid createPermissionHook errors on older SDKs
+let ImagePicker: any;
 
-export default function Add() {
+function Add() {
   const router = useRouter();
-  const { isLoggedIn, isGuest, userId } = useAuth();
+  const params = useLocalSearchParams<{
+    shortcut_title?: string;
+    shortcut_amount?: string;
+    shortcut_description?: string;
+    shortcut_image?: string;
+    trigger_photo?: string;
+  }>();
+  const { isLoggedIn, isGuest, userId, isPremium, ocrScansRemaining, decrementOcrScanLocally } = useAuth();
   const { isOnline } = useNetwork();
 
-  const [icon, setIcon] = useState('money');
-  const [type, setType] = useState('expense');
+  const [icon, setIcon] = useState("money");
+  const [type, setType] = useState("expense");
+  const [transactionDate, setTransactionDate] = useState(new Date());
   const [expenseDetails, setExpenseDetails] = useState({
-    title: '',
-    amount: '',
-    description: '',
+    title: "",
+    amount: "",
+    description: "",
+    date: "",
   });
-
+  const [photoUri, setPhotoUri] = useState<string | null>(null);
+  const [requirePhoto, setRequirePhoto] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [isScanning, setIsScanning] = useState(false);
+  const [showDatePicker, setShowDatePicker] = useState(false);
+  const [showTimePicker, setShowTimePicker] = useState(false);
+  const [isDateAdjusted, setIsDateAdjusted] = useState(false);
+
+  // Prefill from shortcut navigation params and auto-trigger photo picker
+  useEffect(() => {
+    if (params.shortcut_title) {
+      setExpenseDetails({
+        title: params.shortcut_title || "",
+        amount: params.shortcut_amount || "",
+        description: params.shortcut_description || "",
+        date: "",
+      });
+
+      if (params.shortcut_image) {
+        const img = params.shortcut_image;
+        if (img === "money" || img === "car" || img === "food") {
+          setIcon(img);
+          setPhotoUri(null);
+        } else {
+          setPhotoUri(img);
+        }
+      }
+
+      if (params.trigger_photo === "true") {
+        setTimeout(() => {
+          openPhotoPicker();
+        }, 400);
+      }
+
+      // Clear params so they don't re-trigger
+      router.setParams({
+        shortcut_title: undefined,
+        shortcut_amount: undefined,
+        shortcut_description: undefined,
+        shortcut_image: undefined,
+        trigger_photo: undefined,
+      } as any);
+    }
+  }, [params.shortcut_title]);
+
+
+  async function handleScanReceipt() {
+    if (!isPremium && typeof ocrScansRemaining === 'number' && ocrScansRemaining <= 0) {
+      Alert.alert('Limit Reached', 'You have used all your free OCR scans for this month. Upgrade to Premium for unlimited scans.');
+      return;
+    }
+
+    try {
+      if (!ImagePicker) {
+        const module = await import("expo-image-picker");
+        ImagePicker = module;
+      }
+      const result = await ImagePicker.launchCameraAsync({
+        allowsEditing: true,
+        quality: 0.7,
+      });
+
+      if (!result.canceled && result.assets?.length) {
+        setIsScanning(true);
+        const { title, amount } = await extractReceiptData(result.assets[0].uri);
+
+        if (title || amount) {
+          setExpenseDetails(prev => ({
+            ...prev,
+            title: title || prev.title,
+            amount: amount || prev.amount
+          }));
+          Alert.alert('Scan Success', 'Extracted details from receipt.');
+        } else {
+          Alert.alert('Scan Failed', 'Could not read text from receipt clearly.');
+        }
+
+        if (userId && !isGuest && !isPremium) {
+          decrementOcrScanLocally();
+          decrementOcrUsageRemote(userId);
+        }
+      }
+    } catch (error) {
+      Alert.alert("Error", "Failed to access camera or scan receipt.");
+    } finally {
+      setIsScanning(false);
+    }
+  }
+
+
+  async function pickImage(fromCamera: boolean) {
+    try {
+
+      if (!ImagePicker) {
+        const module = await import("expo-image-picker");
+        ImagePicker = module;
+      }
+      const result = fromCamera
+        ? await ImagePicker.launchCameraAsync({
+          allowsEditing: true,
+          quality: 0.4,
+        })
+        : await ImagePicker.launchImageLibraryAsync({
+          allowsEditing: true,
+          quality: 0.4,
+        });
+
+      if (!result.canceled && result.assets?.length) {
+        setPhotoUri(result.assets[0].uri);
+      }
+    } catch (error) {
+      Alert.alert(
+        "Error",
+        "Failed to access camera or photos. Please check your permissions.",
+      );
+    }
+  }
+
+  function openPhotoPicker() {
+    Alert.alert("Add Photo", "Choose a photo source.", [
+      { text: "Take Photo", onPress: () => pickImage(true) },
+      { text: "Upload Photo", onPress: () => pickImage(false) },
+      { text: "Cancel", style: "cancel" },
+    ]);
+  }
 
   async function handleAdd(addType: string) {
     if (loading) return;
 
     // Shortcuts require a logged-in account
-    if (addType === 'shortcut' && !isLoggedIn) {
+    if (addType === "shortcut" && !isLoggedIn) {
       Alert.alert(
-        'Login Required',
-        'You need an account to create shortcuts. Shortcuts are synced to the cloud.',
+        "Login Required",
+        "You need an account to create shortcuts. Shortcuts are synced to the cloud.",
         [
-          { text: 'Cancel', style: 'cancel' },
-          { text: 'Login', onPress: () => router.push('/auth/Login') },
-        ]
+          { text: "Cancel", style: "cancel" },
+          { text: "Login", onPress: () => router.push("/auth/Login") },
+        ],
       );
       return;
     }
@@ -48,88 +197,68 @@ export default function Add() {
     const { title, amount, description } = expenseDetails;
 
     if (!title.trim() || !amount.trim() || !description.trim()) {
-      Alert.alert('Error', 'Please fill in all fields.');
+      Alert.alert("Error", "Please fill in all fields.");
       return;
     }
 
     setLoading(true);
-    const now = new Date().toISOString();
+    const dateToSave = isDateAdjusted ? transactionDate.toISOString() : new Date().toISOString();
+    const selectedImage = photoUri ?? icon;
 
-    if (addType === 'expense') {
+    if (addType === "expense") {
       // ─── Save expense to local SQLite first (always) ───
-      const localId = await insertTransaction({
+      await insertTransaction({
         remote_id: null,
         user_id: isLoggedIn ? userId : null,
         title,
         amount: parseFloat(amount),
-        image: icon,
+        image: selectedImage,
         description,
-        created_at: now,
+        created_at: dateToSave,
         synced: 0,
         is_guest: isGuest ? 1 : 0,
       });
-
-      // ─── Background Sync to Supabase ───
-      if (isLoggedIn && isOnline && userId) {
-        (async () => {
-          try {
-            const { data, error } = await supabase
-              .from('transactions')
-              .insert({ user_id: userId, title, amount: parseFloat(amount), image: icon, description, created_at: now })
-              .select('transaction_id')
-              .single();
-
-            if (!error && data?.transaction_id) {
-              const { markTransactionSynced } = await import('@/lib/db');
-              await markTransactionSynced(localId, data.transaction_id);
-            }
-          } catch (e) {
-            console.warn('[add] Background sync failed:', e);
-          }
-        })();
-      }
-
     } else {
       // ─── Shortcut (only for logged-in users) ───
-      const localId = await insertShortcut({
+      await insertShortcut({
         remote_id: null,
         user_id: userId,
         title,
         amount: parseFloat(amount),
-        image: icon,
+        image: selectedImage,
         description,
-        created_at: now,
+        created_at: dateToSave,
         synced: 0,
         is_guest: 0,
+        require_photo: requirePhoto ? 1 : 0,
       });
+    }
 
-      // ─── Background Sync to Supabase ───
-      if (isOnline && userId) {
-        (async () => {
-          try {
-            const { data, error } = await supabase
-              .from('shortcuts')
-              .insert({ user_id: userId, title, amount: parseFloat(amount), image: icon, description, created_at: now })
-              .select('shortcut_id')
-              .single();
-
-            if (!error && data?.shortcut_id) {
-              const { markShortcutSynced } = await import('@/lib/db');
-              await markShortcutSynced(localId, data.shortcut_id);
-            }
-          } catch (e) {
-            console.warn('[add] Background sync failed:', e);
-          }
-        })();
-      }
+    // ─── Trigger Sync to Supabase ───
+    if (isLoggedIn && isOnline && userId) {
+      (async () => {
+        try {
+          const { syncPendingData } = await import("@/lib/sync");
+          await syncPendingData(userId);
+        } catch (e) {
+          console.warn("[add] Background sync failed:", e);
+        }
+      })();
     }
 
     // ─── Immediate Feedback ───
-    setExpenseDetails({ title: '', amount: '', description: '' });
+    setExpenseDetails({ title: "", amount: "", description: "", date: "" });
+    setPhotoUri(null);
+    setRequirePhoto(false);
     setLoading(false);
-    Alert.alert('Success', `${addType === 'expense' ? 'Expense' : 'Shortcut'} saved locally!`);
-    router.replace('/(tabs)/Home');
+    Alert.alert(
+      "Success",
+      `${addType === "expense" ? "Expense" : "Shortcut"} saved locally!`,
+    );
+    router.replace("/(tabs)/Home");
   }
+
+  // Removed unused onChangeDate function
 
   return (
     <Background>
@@ -144,17 +273,51 @@ export default function Add() {
             showsVerticalScrollIndicator={false}
             keyboardShouldPersistTaps="handled"
           >
-            <Text style={styles.title}>Add</Text>
+            <View style={styles.headerContainer}>
+              <Text style={styles.title}>Add</Text>
+              <Pressable style={styles.cameraIconContainer} onPress={handleScanReceipt} disabled={isScanning}>
+                {isScanning ? (
+                  <ActivityIndicator color="white" size="small" />
+                ) : (
+                  <>
+                    <FontAwesome5 name="camera" size={20} color="white" />
+                    <Text style={styles.cameraUsesText}>
+                      {isPremium ? '∞' : `${ocrScansRemaining}/5`}
+                    </Text>
+                  </>
+                )}
+              </Pressable>
+            </View>
 
             <View style={styles.inputContainer}>
               <Text style={styles.label}>Select Type</Text>
               <View style={styles.pickIcon}>
-                <Pressable onPress={() => setType('expense')} style={styles.typeContainer}>
-                  <Text style={[styles.type, type === 'expense' && styles.typeSelected]}>Expense</Text>
+                <Pressable
+                  onPress={() => setType("expense")}
+                  style={styles.typeContainer}
+                >
+                  <Text
+                    style={[
+                      styles.type,
+                      type === "expense" && styles.typeSelected,
+                    ]}
+                  >
+                    Expense
+                  </Text>
                 </Pressable>
                 {isLoggedIn && (
-                  <Pressable onPress={() => setType('shortcut')} style={styles.typeContainer}>
-                    <Text style={[styles.type, type === 'shortcut' && styles.typeSelected]}>Shortcut</Text>
+                  <Pressable
+                    onPress={() => setType("shortcut")}
+                    style={styles.typeContainer}
+                  >
+                    <Text
+                      style={[
+                        styles.type,
+                        type === "shortcut" && styles.typeSelected,
+                      ]}
+                    >
+                      Shortcut
+                    </Text>
                   </Pressable>
                 )}
               </View>
@@ -163,14 +326,38 @@ export default function Add() {
             <View style={styles.inputContainer}>
               <Text style={styles.label}>Select Icon</Text>
               <View style={styles.pickIcon}>
-                <Pressable onPress={() => setIcon('money')} style={styles.iconContainer}>
-                  <Image source={money} style={[styles.icon, icon === 'money' && styles.selectedIcon]} />
+                <Pressable
+                  onPress={() => setIcon("money")}
+                  style={styles.iconContainer}
+                >
+                  <Image
+                    source={money}
+                    style={[
+                      styles.icon,
+                      icon === "money" && styles.selectedIcon,
+                    ]}
+                  />
                 </Pressable>
-                <Pressable onPress={() => setIcon('car')} style={styles.iconContainer}>
-                  <Image source={car} style={[styles.icon, icon === 'car' && styles.selectedIcon]} />
+                <Pressable
+                  onPress={() => setIcon("car")}
+                  style={styles.iconContainer}
+                >
+                  <Image
+                    source={car}
+                    style={[styles.icon, icon === "car" && styles.selectedIcon]}
+                  />
                 </Pressable>
-                <Pressable onPress={() => setIcon('food')} style={styles.iconContainer}>
-                  <Image source={food} style={[styles.icon, icon === 'food' && styles.selectedIcon]} />
+                <Pressable
+                  onPress={() => setIcon("food")}
+                  style={styles.iconContainer}
+                >
+                  <Image
+                    source={food}
+                    style={[
+                      styles.icon,
+                      icon === "food" && styles.selectedIcon,
+                    ]}
+                  />
                 </Pressable>
               </View>
             </View>
@@ -182,7 +369,9 @@ export default function Add() {
                 placeholderTextColor="gray"
                 style={styles.textInput}
                 value={expenseDetails.title}
-                onChangeText={(text) => setExpenseDetails({ ...expenseDetails, title: text })}
+                onChangeText={(text) =>
+                  setExpenseDetails({ ...expenseDetails, title: text })
+                }
               />
             </View>
 
@@ -194,9 +383,74 @@ export default function Add() {
                 style={styles.textInput}
                 keyboardType="numeric"
                 value={expenseDetails.amount}
-                onChangeText={(text) => setExpenseDetails({ ...expenseDetails, amount: text })}
+                onChangeText={(text) =>
+                  setExpenseDetails({ ...expenseDetails, amount: text })
+                }
               />
             </View>
+
+            <View style={styles.inputContainer}>
+              <Text style={styles.label}>Date and Time</Text>
+              <View style={styles.dateAndTimeContainer}>
+                <Pressable
+                  style={styles.dateButton}
+                  onPress={() => setShowDatePicker(true)}
+                >
+                  <Text style={styles.dateText}>
+                    {transactionDate.toLocaleDateString()}
+                  </Text>
+                </Pressable>
+                <Pressable
+                  style={styles.timeButton}
+                  onPress={() => setShowTimePicker(true)}
+                >
+                  <Text style={styles.dateText}>
+                    {transactionDate.toLocaleTimeString([], {
+                      hour: "2-digit",
+                      minute: "2-digit",
+                    })}
+                  </Text>
+                </Pressable>
+              </View>
+              {showDatePicker && (
+                <DateTimePicker
+                  value={transactionDate}
+                  mode="date"
+                  display="default"
+                  onChange={(event, selectedDate) => {
+                    setShowDatePicker(false);
+                    if (selectedDate) {
+                      const updated = new Date(transactionDate);
+                      updated.setFullYear(selectedDate.getFullYear());
+                      updated.setMonth(selectedDate.getMonth());
+                      updated.setDate(selectedDate.getDate());
+                      setTransactionDate(updated);
+                      setIsDateAdjusted(true);
+                    }
+                  }}
+                />
+              )}
+              {showTimePicker && (
+                <DateTimePicker
+                  value={transactionDate}
+                  mode="time"
+                  display="default"
+                  onChange={(event, selectedTime) => {
+                    setShowTimePicker(false);
+                    if (selectedTime) {
+                      const updated = new Date(transactionDate);
+                      updated.setHours(selectedTime.getHours());
+                      updated.setMinutes(selectedTime.getMinutes());
+                      updated.setSeconds(selectedTime.getSeconds());
+                      setTransactionDate(updated);
+                      setIsDateAdjusted(true);
+                    }
+                  }}
+                />
+              )}
+            </View>
+
+
 
             <View style={styles.inputContainer}>
               <Text style={styles.label}>Description</Text>
@@ -207,26 +461,79 @@ export default function Add() {
                 multiline
                 textAlignVertical="top"
                 value={expenseDetails.description}
-                onChangeText={(text) => setExpenseDetails({ ...expenseDetails, description: text })}
+                onChangeText={(text) =>
+                  setExpenseDetails({ ...expenseDetails, description: text })
+                }
               />
             </View>
+            <View style={styles.inputContainer}>
+              <Pressable style={styles.photoButton} onPress={openPhotoPicker}>
+                <Text style={styles.photoButtonText}>
+                  {photoUri ? "Change Photo" : "Add Photo (Optional)"}
+                </Text>
+              </Pressable>
+              {photoUri ? (
+                <View style={styles.photoPreviewContainer}>
+                  <Image
+                    source={{ uri: photoUri }}
+                    style={styles.photoPreview}
+                  />
+                  <Pressable
+                    onPress={() => setPhotoUri(null)}
+                    style={styles.photoRemoveButton}
+                  >
+                    <Text style={styles.photoRemoveText}>Remove</Text>
+                  </Pressable>
+                </View>
+              ) : null}
+            </View>
+
+            {type === "shortcut" && (
+              <View style={styles.inputContainer}>
+                <Text style={styles.label}>Require Photo on Use</Text>
+                <Pressable
+                  style={[
+                    styles.toggleButton,
+                    requirePhoto && styles.toggleButtonActive,
+                  ]}
+                  onPress={() => setRequirePhoto(!requirePhoto)}
+                >
+                  <Text
+                    style={[
+                      styles.toggleButtonText,
+                      requirePhoto && styles.toggleButtonTextActive,
+                    ]}
+                  >
+                    {requirePhoto ? "Yes, require photo" : "No, optional photo"}
+                  </Text>
+                </Pressable>
+              </View>
+            )}
 
             <Pressable style={styles.addButton} onPress={() => handleAdd(type)}>
-              <Text style={styles.addButtonText}>Add {type === 'expense' ? 'Expense' : 'Shortcut'}</Text>
+              <Text style={styles.addButtonText}>
+                Add {type === "expense" ? "Expense" : "Shortcut"}
+              </Text>
             </Pressable>
 
             {/* Offline indicator */}
             {!isOnline && (
               <View style={styles.offlineBanner}>
-                <Text style={styles.offlineBannerText}>⚡ OFFLINE — will sync when online</Text>
+                <Text style={styles.offlineBannerText}>
+                  ⚡ OFFLINE — will sync when online
+                </Text>
               </View>
             )}
-            
+
             <View style={{ height: 100 }} />
           </ScrollView>
         </KeyboardAvoidingView>
 
-        <StatusBar translucent backgroundColor="transparent" barStyle="light-content" />
+        <StatusBar
+          translucent
+          backgroundColor="transparent"
+          barStyle="light-content"
+        />
       </SafeAreaView>
     </Background>
   );
@@ -235,35 +542,45 @@ export default function Add() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    alignItems: 'center',
-    width: '100%',
+    alignItems: "center",
+    width: "100%",
     maxWidth: 500,
   },
   scrollContainer: {
     flexGrow: 1,
-    alignItems: 'center',
-    width: '100%',
+    alignItems: "center",
+    width: "100%",
     paddingTop: 50,
   },
   inputContainer: {
     padding: 5,
-    alignItems: 'flex-start',
-    justifyContent: 'center',
-    width: '70%',
+    alignItems: "flex-start",
+    justifyContent: "center",
+    width: "70%",
     marginBottom: 16,
+  },
+  dateAndTimeContainer: {
+    gap: '5%',
+    display: 'flex',
+    flexDirection: 'row',
+    padding: 0,
+    alignItems: "center",
+    justifyContent: "space-between",
+    width: "100%",
+    marginBottom: 5,
   },
   pickIcon: {
     marginTop: 8,
-    flexDirection: 'row',
-    justifyContent: 'space-between',
+    flexDirection: "row",
+    justifyContent: "space-between",
     gap: 10,
-    width: '100%',
+    width: "100%",
   },
   iconContainer: {
     width: 50,
     height: 50,
-    justifyContent: 'center',
-    alignItems: 'center',
+    justifyContent: "center",
+    alignItems: "center",
     padding: 5,
   },
   icon: {
@@ -275,79 +592,187 @@ const styles = StyleSheet.create({
     width: 40,
     height: 40,
     margin: 10,
-    borderColor: 'white',
+    borderColor: "white",
     borderWidth: 1.5,
   },
   textInputDescription: {
     padding: 5,
     height: 100,
     marginBottom: 16,
-    fontFamily: 'VCR-Mono',
+    fontFamily: "VCR-Mono",
     borderWidth: 1.5,
-    borderColor: 'white',
+    borderColor: "white",
     borderRadius: 10,
-    color: 'white',
-    minWidth: '100%',
-    overflow: 'hidden',
+    color: "white",
+    minWidth: "100%",
+    overflow: "hidden",
   },
   textInput: {
-    fontFamily: 'VCR-Mono',
-    color: 'white',
-    width: '100%',
+    fontFamily: "VCR-Mono",
+    color: "white",
+    width: "100%",
     height: 45,
     borderWidth: 1.5,
     marginTop: 8,
-    borderColor: 'white',
+    borderColor: "white",
     paddingHorizontal: 10,
     borderRadius: 10,
   },
   label: {
-    fontFamily: 'VCR-Mono',
-    color: 'white',
+    fontFamily: "VCR-Mono",
+    color: "white",
     marginBottom: 4,
   },
   title: {
-    fontFamily: 'VCR-Mono',
-    color: 'white',
+    fontFamily: "VCR-Mono",
+    color: "white",
     fontSize: 28,
+  },
+  headerContainer: {
+    width: "70%",
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
     marginBottom: 20,
   },
+  cameraIconContainer: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "rgba(255,255,255,0.1)",
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 20,
+    gap: 8,
+  },
+  cameraUsesText: {
+    fontFamily: "VCR-Mono",
+    color: "white",
+    fontSize: 14,
+  },
   addButton: {
-    backgroundColor: 'white',
+    backgroundColor: "white",
     padding: 15,
     borderRadius: 10,
-    width: '67%',
-    alignItems: 'center',
-    justifyContent: 'center',
+    width: "67%",
+    alignItems: "center",
+    justifyContent: "center",
     marginBottom: 20,
   },
   addButtonText: {
-    fontFamily: 'VCR-Mono',
-    color: 'black',
+    fontFamily: "VCR-Mono",
+    color: "black",
     fontSize: 18,
   },
+  photoButton: {
+    display: "flex",
+    alignContent: "center",
+    width: "100%",
+    backgroundColor: "rgba(255,255,255,0.12)",
+    paddingVertical: 11,
+    paddingHorizontal: 14,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.25)",
+  },
+  photoButtonText: {
+    fontFamily: "VCR-Mono",
+    color: "white",
+    fontSize: 12,
+  },
+  photoPreviewContainer: {
+    marginTop: 10,
+    width: "100%",
+    alignItems: "center",
+    gap: 8,
+  },
+  photoPreview: {
+    width: "100%",
+    height: 180,
+    borderRadius: 14,
+    resizeMode: "cover",
+  },
+  photoRemoveButton: {
+    marginTop: 6,
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    borderRadius: 8,
+    backgroundColor: "rgba(255,255,255,0.12)",
+  },
+  photoRemoveText: {
+    fontFamily: "VCR-Mono",
+    color: "white",
+    fontSize: 12,
+  },
+  toggleButton: {
+    backgroundColor: "rgba(255,255,255,0.1)",
+    borderRadius: 10,
+    paddingVertical: 12,
+    paddingHorizontal: 14,
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.2)",
+  },
+  toggleButtonActive: {
+    backgroundColor: "white",
+    borderColor: "white",
+  },
+  toggleButtonText: {
+    fontFamily: "VCR-Mono",
+    color: "rgba(255,255,255,0.75)",
+    fontSize: 12,
+  },
+  toggleButtonTextActive: {
+    color: "#0f0f2e",
+  },
   typeContainer: {
-    justifyContent: 'space-between',
+    justifyContent: "space-between",
   },
   type: {
-    color: 'white',
-    fontFamily: 'VCR-Mono',
+    color: "white",
+    fontFamily: "VCR-Mono",
   },
   typeSelected: {
-    color: 'red',
+    color: "red",
   },
   offlineBanner: {
     marginTop: 4,
     paddingHorizontal: 12,
     paddingVertical: 6,
     borderRadius: 8,
-    backgroundColor: 'rgba(255, 180, 0, 0.15)',
+    backgroundColor: "rgba(255, 180, 0, 0.15)",
     borderWidth: 1,
-    borderColor: 'rgba(255, 180, 0, 0.4)',
+    borderColor: "rgba(255, 180, 0, 0.4)",
   },
   offlineBannerText: {
-    fontFamily: 'VCR-Mono',
-    color: 'rgba(255, 200, 0, 0.9)',
+    fontFamily: "VCR-Mono",
+    color: "rgba(255, 200, 0, 0.9)",
     fontSize: 11,
   },
+  dateButton: {
+    textAlign: 'center',
+    justifyContent: 'center',
+    width: '60%',
+    height: 45,
+    borderWidth: 1.5,
+    marginTop: 8,
+    borderColor: "white",
+    paddingHorizontal: 10,
+    borderRadius: 10,
+  },
+  timeButton: {
+    textAlign: 'center',
+    justifyContent: 'center',
+    width: '40%',
+    height: 45,
+    borderWidth: 1.5,
+    marginTop: 8,
+    borderColor: "white",
+    paddingHorizontal: 10,
+    borderRadius: 10,
+  },
+  dateText: {
+    fontFamily: "VCR-Mono",
+    color: 'white',
+  }
 });
+
+export default Add;

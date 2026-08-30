@@ -14,6 +14,10 @@ type AuthContextType = {
   continueAsGuest: () => Promise<void>;
   setLoggedIn: (userId: string) => Promise<void>;
   logout: () => Promise<void>;
+  isPremium: boolean;
+  ocrScansRemaining: number | 'unlimited';
+  decrementOcrScanLocally: () => void;
+  refreshProfile: () => Promise<void>;
 };
 
 // ─── Context ──────────────────────────────────────────────────────────────────
@@ -26,6 +30,10 @@ const AuthContext = createContext<AuthContextType>({
   continueAsGuest: async () => {},
   setLoggedIn: async () => {},
   logout: async () => {},
+  isPremium: false,
+  ocrScansRemaining: 5,
+  decrementOcrScanLocally: () => {},
+  refreshProfile: async () => {},
 });
 
 // ─── Provider ─────────────────────────────────────────────────────────────────
@@ -33,6 +41,38 @@ const AuthContext = createContext<AuthContextType>({
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [mode, setMode] = useState<AuthMode>('unknown');
   const [userId, setUserId] = useState<string | null>(null);
+  const [isPremium, setIsPremium] = useState(false);
+  const [ocrScansRemaining, setOcrScansRemaining] = useState<number | 'unlimited'>(5);
+
+  const refreshProfile = useCallback(async (uid?: string) => {
+    const idToUse = uid || userId;
+    if (!idToUse) return;
+    try {
+      const { data, error } = await supabase
+        .from('profiles')
+        .select('is_premium, ocr_scans_remaining')
+        .eq('id', idToUse)
+        .single();
+      
+      if (!error && data) {
+        setIsPremium(data.is_premium);
+        if (data.is_premium) {
+          setOcrScansRemaining('unlimited');
+        } else {
+          setOcrScansRemaining(data.ocr_scans_remaining ?? 5);
+        }
+      }
+    } catch (e) {
+      console.warn('[auth] Error fetching profile:', e);
+    }
+  }, [userId]);
+
+  const decrementOcrScanLocally = useCallback(() => {
+    setOcrScansRemaining((prev) => {
+      if (prev === 'unlimited') return 'unlimited';
+      return Math.max(0, prev - 1);
+    });
+  }, []);
 
   // Restore persisted auth state on mount
   useEffect(() => {
@@ -46,6 +86,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           await AsyncStorage.setItem('authMode', 'loggedIn');
           setUserId(uid);
           setMode('loggedIn');
+          await refreshProfile(uid);
           return;
         }
 
@@ -57,6 +98,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           if (id) {
             setUserId(id);
             setMode('loggedIn');
+            await refreshProfile(id);
             return;
           }
         }
@@ -87,7 +129,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     await AsyncStorage.setItem('authMode', 'loggedIn');
     setUserId(uid);
     setMode('loggedIn');
-  }, []);
+    await refreshProfile(uid);
+  }, [refreshProfile]);
 
   const logout = useCallback(async () => {
     try {
@@ -108,6 +151,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         continueAsGuest,
         setLoggedIn,
         logout,
+        isPremium,
+        ocrScansRemaining,
+        decrementOcrScanLocally,
+        refreshProfile,
       }}
     >
       {children}

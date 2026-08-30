@@ -7,11 +7,12 @@ type ScreenProps = {
   isGuest: boolean;
   sortAscending: boolean;
   onFilterChange?: (filter: string) => void;
+  refreshTrigger?: number;
 };
 
 const FILTERS = ['TODAY', ' THIS WEEK', ' THIS MONTH', 'THIS YEAR', 'ALL TIME'];
 
-function Screen({ userId, isGuest, sortAscending, onFilterChange }: ScreenProps) {
+function Screen({ userId, isGuest, sortAscending, onFilterChange, refreshTrigger }: ScreenProps) {
   const [selectedFilter, setSelectedFilter] = useState('TODAY');
   const [totalAmount, setTotalAmount] = useState(0);
 
@@ -31,7 +32,7 @@ function Screen({ userId, isGuest, sortAscending, onFilterChange }: ScreenProps)
 
   useEffect(() => {
     fetchTotal(selectedFilter);
-  }, [userId, isGuest, selectedFilter, sortAscending]);
+  }, [userId, isGuest, selectedFilter, sortAscending, refreshTrigger]);
 
   return (
     <Pressable onPress={() => handleScreenPress(selectedFilter)}>
