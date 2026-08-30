@@ -1,0 +1,111 @@
+name: Build Android Development APK
+
+on:
+  push:
+    branches:
+      - main
+
+  workflow_dispatch:
+
+# Required for GitHub Actions to create releases
+permissions:
+  contents: write
+
+jobs:
+  build-and-release:
+    name: EAS Build and GitHub Release
+    runs-on: ubuntu-latest
+
+    steps:
+
+      # 1. Checkout repository
+
+      - name: Checkout repository
+        uses: actions/checkout@v5
+
+
+      # 2. Setup Node.js
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: 24
+          cache: npm
+
+
+      # 3. Setup Expo / EAS CLI
+
+      - name: Setup Expo and EAS
+        uses: expo/expo-github-action@v8
+        with:
+          eas-version: latest
+          token: ${{ secrets.EXPO_TOKEN }}
+
+
+      # 4. Install project dependencies
+
+      - name: Install dependencies
+        run: npm ci
+
+      # 5. Start EAS Cloud Build
+
+      - name: Build Android APK on EAS
+        run: |
+          eas build \
+            --platform android \
+            --profile development \
+            --non-interactive \
+            --wait \
+            --json > eas-build.json
+
+
+      # 6. Download the completed APK from EAS
+      - name: Download APK
+        run: |
+          APK_URL=$(node -e "
+            const fs = require('fs');
+            const data = JSON.parse(fs.readFileSync('eas-build.json', 'utf8'));
+            const build = Array.isArray(data) ? data[0] : data;
+            console.log(build.artifacts?.buildUrl || build.artifactUrl || '');
+          ")
+
+          if [ -z "$APK_URL" ]; then
+            echo "ERROR: Could not find APK URL in EAS build response."
+            cat eas-build.json
+            exit 1
+          fi
+
+          echo "Downloading APK from EAS..."
+          curl -L "$APK_URL" -o app-development.apk
+
+
+      # 7. Generate unique GitHub Release tag
+
+      - name: Generate release tag
+        id: release
+        run: |
+          echo "tag=build-${GITHUB_SHA::7}" >> "$GITHUB_OUTPUT"
+
+
+      # 8. Create GitHub Release and upload APK
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.release.outputs.tag }}
+          name: Development Build (${{ steps.release.outputs.tag }})
+          body: |
+            Automated Android development build.
+
+            Commit:
+            ${{ github.sha }}
+
+            Branch:
+            ${{ github.ref_name }}
+
+            This build was generated using Expo EAS Build.
+          prerelease: true
+          files: app-development.apk
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+
